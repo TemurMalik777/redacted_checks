@@ -10,7 +10,7 @@ import Import from './import';
 import Check from './checks/checks.model';
 import Faktura from './faktura/faktura.model';
 import SelectCheck from './select_checks/selectChecks.model';
-import ProcessLog from './Processlog';
+import ProcessLog from './user/Processlog';
 
 /**
  * RELATIONSHIPS (Bog'lanishlar)

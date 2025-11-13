@@ -2,148 +2,249 @@ import { Model, DataTypes, Optional } from 'sequelize';
 import sequelize from '../../config/database';
 
 /**
- * Import interfeysi
+ * SelectCheck interfeysi
  * 
- * Bu jadval Excel import jarayonlarini log qilish uchun
- * Har bir import operatsiyasi bu jadvalga yoziladi
+ * BU ENG MUHIM JADVAL!
  */
-export interface ImportAttributes {
+export interface SelectCheckAttributes {
   id: number;
-  fileName: string;           // Yuklangan fayl nomi
-  source: 'excel' | 'manual'; // Qayerdan kelgani
-  totalRows: number;          // Jami qatorlar soni
-  importedRows: number;       // Muvaffaqiyatli import qilingan qatorlar
-  failedRows: number;         // Xatolik bo'lgan qatorlar
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  errorMessage?: string;      // Xatolik xabari (agar bo'lsa)
-  importedBy: number;         // Qaysi user import qilgan (user_id)
-  startedAt?: Date;
-  finishedAt?: Date;
+  
+  // Faktura ma'lumotlari
+  mxik: string;
+  ulchov: string;
+  fakturaSumma: number;
+  fakturaMiqdor: number;
+  
+  // Check ma'lumotlari
+  chekRaqam: string;
+  maxsulotNomi: string;
+  chekSumma: number;
+  
+  // Hisoblangan maydonlar
+  miqdor: number;
+  umumiyChekSumma: number;
+  birBirlik: number;
+  
+  // Status
+  isActive: boolean;
+  processed: boolean;
+  automationStatus?: 'pending' | 'processing' | 'completed' | 'failed';
+  errorMessage?: string;
+  
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-export interface ImportCreationAttributes 
-  extends Optional<ImportAttributes, 'id' | 'importedRows' | 'failedRows' | 'status' | 'errorMessage' | 'startedAt' | 'finishedAt' | 'createdAt' | 'updatedAt'> {}
+export interface SelectCheckCreationAttributes 
+  extends Optional<SelectCheckAttributes, 'id' | 'isActive' | 'processed' | 'automationStatus' | 'errorMessage' | 'createdAt' | 'updatedAt'> {}
 
 /**
- * Import Model
+ * SelectCheck Model
  */
-class Import extends Model<ImportAttributes, ImportCreationAttributes> implements ImportAttributes {
+class SelectCheck extends Model<SelectCheckAttributes, SelectCheckCreationAttributes> implements SelectCheckAttributes {
   public id!: number;
-  public fileName!: string;
-  public source!: 'excel' | 'manual';
-  public totalRows!: number;
-  public importedRows!: number;
-  public failedRows!: number;
-  public status!: 'pending' | 'processing' | 'completed' | 'failed';
+  
+  // Faktura
+  public mxik!: string;
+  public ulchov!: string;
+  public fakturaSumma!: number;
+  public fakturaMiqdor!: number;
+  
+  // Check
+  public chekRaqam!: string;
+  public maxsulotNomi!: string;
+  public chekSumma!: number;
+  
+  // Calculated
+  public miqdor!: number;
+  public umumiyChekSumma!: number;
+  public birBirlik!: number;
+  
+  // Status
+  public isActive!: boolean;
+  public processed!: boolean;
+  public automationStatus?: 'pending' | 'processing' | 'completed' | 'failed';
   public errorMessage?: string;
-  public importedBy!: number;
-  public startedAt?: Date;
-  public finishedAt?: Date;
   
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 
   /**
-   * Import duration hisoblash (soniyalarda)
+   * Bir birlik narxni qayta hisoblash
    */
-  public getDuration(): number | null {
-    if (!this.startedAt || !this.finishedAt) return null;
-    return Math.floor((this.finishedAt.getTime() - this.startedAt.getTime()) / 1000);
+  public recalculateBirBirlik(): void {
+    if (this.fakturaMiqdor > 0) {
+      this.birBirlik = this.fakturaSumma / this.fakturaMiqdor;
+    } else {
+      this.birBirlik = 0;
+    }
   }
 
   /**
-   * Success rate hisoblash (foizda)
+   * Automation uchun tayyor ekanligini tekshirish
    */
-  public getSuccessRate(): number {
-    if (this.totalRows === 0) return 0;
-    return Math.round((this.importedRows / this.totalRows) * 100);
+  public isReadyForAutomation(): boolean {
+    return (
+      !this.isActive &&
+      !this.processed &&
+      Boolean(this.chekRaqam) &&
+      Boolean(this.mxik) &&
+      Boolean(this.ulchov) &&
+      this.miqdor > 0 &&
+      this.fakturaSumma > 0
+    );
   }
 }
 
-Import.init(
+SelectCheck.init(
   {
     id: {
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
     },
-    fileName: {
-      type: DataTypes.STRING(255),
+    
+    // Faktura fields
+    mxik: {
+      type: DataTypes.STRING(50),
       allowNull: false,
-      field: 'file_name',
+      validate: {
+        notEmpty: true,
+      },
     },
-    source: {
-      type: DataTypes.ENUM('excel', 'manual'),
+    ulchov: {
+      type: DataTypes.STRING(20),
       allowNull: false,
-      defaultValue: 'excel',
+      validate: {
+        notEmpty: true,
+      },
     },
-    totalRows: {
-      type: DataTypes.INTEGER,
+    fakturaSumma: {
+      type: DataTypes.DECIMAL(15, 2),
       allowNull: false,
-      defaultValue: 0,
-      field: 'total_rows',
+      field: 'faktura_summa',
+      validate: {
+        min: 0,
+      },
     },
-    importedRows: {
-      type: DataTypes.INTEGER,
+    fakturaMiqdor: {
+      type: DataTypes.DECIMAL(10, 3),
       allowNull: false,
-      defaultValue: 0,
-      field: 'imported_rows',
+      field: 'faktura_miqdor',
+      validate: {
+        min: 0,
+      },
     },
-    failedRows: {
-      type: DataTypes.INTEGER,
+    
+    // Check fields
+    chekRaqam: {
+      type: DataTypes.STRING(100),
       allowNull: false,
-      defaultValue: 0,
-      field: 'failed_rows',
+      field: 'chek_raqam',
+      validate: {
+        notEmpty: true,
+      },
     },
-    status: {
+    maxsulotNomi: {
+      type: DataTypes.TEXT,
+      allowNull: false,
+      field: 'maxsulot_nomi',
+      validate: {
+        notEmpty: true,
+      },
+    },
+    chekSumma: {
+      type: DataTypes.DECIMAL(15, 2),
+      allowNull: false,
+      field: 'chek_summa',
+      validate: {
+        min: 0,
+      },
+    },
+    
+    // Calculated fields
+    miqdor: {
+      type: DataTypes.DECIMAL(10, 3),
+      allowNull: false,
+      validate: {
+        min: 0,
+      },
+      comment: 'Chek bo\'yicha maxsulot miqdori',
+    },
+    umumiyChekSumma: {
+      type: DataTypes.DECIMAL(15, 2),
+      allowNull: false,
+      field: 'umumiy_chek_summa',
+      validate: {
+        min: 0,
+      },
+    },
+    birBirlik: {
+      type: DataTypes.DECIMAL(15, 2),
+      allowNull: false,
+      field: 'bir_birlik',
+      validate: {
+        min: 0,
+      },
+    },
+    
+    // Status fields
+    isActive: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+      field: 'is_active',
+    },
+    processed: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    automationStatus: {
       type: DataTypes.ENUM('pending', 'processing', 'completed', 'failed'),
-      allowNull: false,
-      defaultValue: 'pending',
+      allowNull: true,
+      field: 'automation_status',
     },
     errorMessage: {
       type: DataTypes.TEXT,
       allowNull: true,
       field: 'error_message',
     },
-    importedBy: {
-      type: DataTypes.INTEGER,
-      allowNull: false,
-      field: 'imported_by',
-      references: {
-        model: 'users',
-        key: 'id',
-      },
-    },
-    startedAt: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      field: 'started_at',
-    },
-    finishedAt: {
-      type: DataTypes.DATE,
-      allowNull: true,
-      field: 'finished_at',
-    },
   },
   {
     sequelize,
-    tableName: 'imports',
+    tableName: 'select_checks',
     timestamps: true,
     underscored: true,
     indexes: [
       {
-        fields: ['imported_by'],
+        fields: ['is_active'],
       },
       {
-        fields: ['status'],
+        fields: ['processed'],
       },
       {
-        fields: ['created_at'],
+        fields: ['automation_status'],
+      },
+      {
+        fields: ['chek_raqam'],
+      },
+      {
+        fields: ['mxik'],
       },
     ],
+    
+    hooks: {
+      beforeCreate: (selectCheck: SelectCheck) => {
+        selectCheck.recalculateBirBirlik();
+      },
+      beforeUpdate: (selectCheck: SelectCheck) => {
+        if (selectCheck.changed('fakturaSumma') || selectCheck.changed('fakturaMiqdor')) {
+          selectCheck.recalculateBirBirlik();
+        }
+      },
+    },
   }
 );
 
-export default Import;
+export default SelectCheck;

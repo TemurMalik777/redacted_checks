@@ -1,34 +1,50 @@
 import { Model, DataTypes, Optional } from 'sequelize';
-import sequelize from '../config/database';
+import sequelize from '../../config/database';
 
 /**
  * ProcessLog interfeysi
- * 
+ *
  * Har bir browser automation jarayonini log qilish uchun
  * Debug va monitoring uchun juda muhim
  */
 export interface ProcessLogAttributes {
   id: number;
-  processName: string;              // Jarayon nomi (masalan: "edit_check")
-  selectCheckId?: number;           // Qaysi select_check uchun
+  processName: string; // Jarayon nomi (masalan: "edit_check")
+  selectCheckId?: number; // Qaysi select_check uchun
   status: 'started' | 'processing' | 'completed' | 'failed';
-  message?: string;                 // Har bir bosqich haqida xabar
-  errorDetails?: string;            // Xato detallar (agar bo'lsa)
-  screenshotPath?: string;          // Screenshot fayl yo'li
-  duration?: number;                // Jarayon davomiyligi (sekund)
+  message?: string; // Har bir bosqich haqida xabar
+  errorDetails?: string; // Xato detallar (agar bo'lsa)
+  screenshotPath?: string; // Screenshot fayl yo'li
+  duration?: number; // Jarayon davomiyligi (sekund)
   startedAt?: Date;
   finishedAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-export interface ProcessLogCreationAttributes 
-  extends Optional<ProcessLogAttributes, 'id' | 'selectCheckId' | 'status' | 'message' | 'errorDetails' | 'screenshotPath' | 'duration' | 'startedAt' | 'finishedAt' | 'createdAt' | 'updatedAt'> {}
+export interface ProcessLogCreationAttributes
+  extends Optional<
+    ProcessLogAttributes,
+    | 'id'
+    | 'selectCheckId'
+    | 'status'
+    | 'message'
+    | 'errorDetails'
+    | 'screenshotPath'
+    | 'duration'
+    | 'startedAt'
+    | 'finishedAt'
+    | 'createdAt'
+    | 'updatedAt'
+  > {}
 
 /**
  * ProcessLog Model
  */
-class ProcessLog extends Model<ProcessLogAttributes, ProcessLogCreationAttributes> implements ProcessLogAttributes {
+class ProcessLog
+  extends Model<ProcessLogAttributes, ProcessLogCreationAttributes>
+  implements ProcessLogAttributes
+{
   public id!: number;
   public processName!: string;
   public selectCheckId?: number;
@@ -39,7 +55,7 @@ class ProcessLog extends Model<ProcessLogAttributes, ProcessLogCreationAttribute
   public duration?: number;
   public startedAt?: Date;
   public finishedAt?: Date;
-  
+
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 
@@ -48,7 +64,9 @@ class ProcessLog extends Model<ProcessLogAttributes, ProcessLogCreationAttribute
    */
   public calculateDuration(): number | null {
     if (!this.startedAt || !this.finishedAt) return null;
-    return Math.floor((this.finishedAt.getTime() - this.startedAt.getTime()) / 1000);
+    return Math.floor(
+      (this.finishedAt.getTime() - this.startedAt.getTime()) / 1000,
+    );
   }
 
   /**
@@ -57,7 +75,7 @@ class ProcessLog extends Model<ProcessLogAttributes, ProcessLogCreationAttribute
   public getFormattedDuration(): string {
     const dur = this.duration || this.calculateDuration();
     if (!dur) return 'N/A';
-    
+
     if (dur < 60) return `${dur}s`;
     const minutes = Math.floor(dur / 60);
     const seconds = dur % 60;
@@ -106,7 +124,7 @@ ProcessLog.init(
       field: 'screenshot_path',
     },
     duration: {
-      type: DataTypes.INTEGER,  // Sekund
+      type: DataTypes.INTEGER, // Sekund
       allowNull: true,
       comment: 'Jarayon davomiyligi (sekund)',
     },
@@ -140,7 +158,7 @@ ProcessLog.init(
         fields: ['created_at'],
       },
     ],
-  }
+  },
 );
 
 export default ProcessLog;
