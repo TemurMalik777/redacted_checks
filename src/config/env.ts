@@ -1,139 +1,90 @@
 import dotenv from 'dotenv';
-import path from 'path';
+import type { StringValue } from 'ms';
 
-// .env faylini yuklash
+// .env faylni yuklash
 dotenv.config();
 
 /**
- * Environment o'zgaruvchilarini validation qilish va type-safe qilish
+ * Environment Configuration
  */
-class Config {
+export const config = {
   // Server
-  readonly PORT: number;
-  readonly NODE_ENV: string;
+  PORT: parseInt(process.env.PORT || '3001', 10),
+  NODE_ENV: process.env.NODE_ENV || 'development',
+  isDevelopment: process.env.NODE_ENV === 'development',
+  isProduction: process.env.NODE_ENV === 'production',
 
   // Database
-  readonly DB_HOST: string;
-  readonly DB_PORT: number;
-  readonly DB_NAME: string;
-  readonly DB_USER: string;
-  readonly DB_PASSWORD: string;
-  readonly DATABASE_URL: string;
+  DB_HOST: process.env.DB_HOST || 'localhost',
+  DB_PORT: parseInt(process.env.DB_PORT || '5432', 10),
+  DB_NAME: process.env.DB_NAME || 'redacted_checks',
+  DB_USER: process.env.DB_USER || 'postgres',
+  DB_PASSWORD: process.env.DB_PASSWORD || '5432',
 
-  // JWT
-  readonly JWT_SECRET: string;
-  readonly JWT_EXPIRE: string;
+  // JWT - Access Token
+  JWT_SECRET: process.env.JWT_SECRET || process.env.ACCESS_TOKEN_SECRET || 'super_secret_change_this',
+  JWT_EXPIRE: (process.env.JWT_EXPIRES_IN || process.env.ACCESS_TOKEN_EXPIRES_IN || '15m') as StringValue,
+
+  // Access Token
+  ACCESS_TOKEN_SECRET: process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET || 'access_token_secret_change_this',
+  ACCESS_TOKEN_EXPIRES_IN: (process.env.ACCESS_TOKEN_EXPIRES_IN || '15m') as StringValue,
+
+  // Refresh Token
+  REFRESH_TOKEN_SECRET: process.env.REFRESH_TOKEN_SECRET || 'refresh_token_secret_change_this',
+  REFRESH_TOKEN_EXPIRES_IN: (process.env.REFRESH_TOKEN_EXPIRES_IN || '7d') as StringValue,
 
   // API Keys
-  readonly CAPTCHA_API_KEY: string;
+  API_KEY: process.env.API_KEY || '',
+  CAPTCHA_SOLVER_API_KEY: process.env.CAPTCHA_SOLVER_API_KEY || 'b5f4362e7f0c752d0ff8d2ce1726e16e',
 
   // Logging
-  readonly LOG_LEVEL: string;
-  readonly LOG_FILE: string;
+  LOG_LEVEL: process.env.LOG_LEVEL || 'info',
+  LOG_FILE: process.env.LOG_FILE || 'logs/application.log',
 
   // File Upload
-  readonly MAX_FILE_SIZE: number;
-  readonly UPLOAD_PATH: string;
+  MAX_FILE_SIZE: parseInt(process.env.MAX_FILE_SIZE || '10485760', 10),
+  UPLOAD_DIR: process.env.UPLOAD_DIR || 'uploads',
 
   // Browser Automation
-  readonly BROWSER_HEADLESS: boolean;
-  readonly BROWSER_TIMEOUT: number;
+  HEADLESS: process.env.HEADLESS === 'true',
+  BROWSER_TIMEOUT: parseInt(process.env.BROWSER_TIMEOUT || '30000', 10),
 
-  // Target Website
-  readonly TARGET_URL: string;
-
-  constructor() {
-    // Server
-    this.PORT = parseInt(process.env.PORT || '3001', 10);
-    this.NODE_ENV = process.env.NODE_ENV || 'development';
-
-    // Database
-    this.DB_HOST = process.env.DB_HOST || 'localhost';
-    this.DB_PORT = parseInt(process.env.DB_PORT || '5432', 10);
-    this.DB_NAME = process.env.DB_NAME || 'redacted_checks';
-    this.DB_USER = process.env.DB_USER || 'postgres';
-    this.DB_PASSWORD = process.env.DB_PASSWORD || '5432';
-    
-    // Database URL yaratish
-    this.DATABASE_URL = process.env.DATABASE_URL || 
-      `postgresql://${this.DB_USER}:${this.DB_PASSWORD}@${this.DB_HOST}:${this.DB_PORT}/${this.DB_NAME}`;
-
-    // JWT
-    this.JWT_SECRET = process.env.JWT_SECRET || 'default_secret_key';
-    this.JWT_EXPIRE = process.env.JWT_EXPIRE || '7d';
-
-    // API Keys
-    this.CAPTCHA_API_KEY = process.env.CAPTCHA_API_KEY || '';
-
-    // Logging
-    this.LOG_LEVEL = process.env.LOG_LEVEL || 'INFO';
-    this.LOG_FILE = process.env.LOG_FILE || 'logs/app.log';
-
-    // File Upload
-    this.MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE || '10485760', 10); // 10MB default
-    this.UPLOAD_PATH = process.env.UPLOAD_PATH || 'uploads';
-
-    // Browser Automation
-    this.BROWSER_HEADLESS = process.env.BROWSER_HEADLESS === 'true';
-    this.BROWSER_TIMEOUT = parseInt(process.env.BROWSER_TIMEOUT || '30000', 10);
-
-    // Target Website
-    this.TARGET_URL = process.env.TARGET_URL || 'https://my3.soliq.uz';
-
-    this.validateConfig();
-  }
-
-  /**
-   * Muhim config parametrlarini tekshirish
-   */
-  private validateConfig(): void {
-    const requiredVars = [
-      'DB_HOST',
-      'DB_NAME',
-      'DB_USER',
-      'JWT_SECRET'
-    ];
-
-    const missing = requiredVars.filter(varName => !process.env[varName]);
-
-    if (missing.length > 0) {
-      console.warn(`⚠️  Missing environment variables: ${missing.join(', ')}`);
-      console.warn('Please check your .env file');
-    }
-
-    // Production da JWT_SECRET default bo'lmasligi kerak
-    if (this.NODE_ENV === 'production' && this.JWT_SECRET === 'default_secret_key') {
-      throw new Error('JWT_SECRET must be set in production!');
-    }
-  }
-
-  /**
-   * Config ma'lumotlarini chiroyli ko'rinishda chiqarish (parollarni yashirish)
-   */
-  public printConfig(): void {
-    console.log('=== Configuration ===');
-    console.log(`Environment: ${this.NODE_ENV}`);
-    console.log(`Server Port: ${this.PORT}`);
-    console.log(`Database: ${this.DB_NAME}@${this.DB_HOST}:${this.DB_PORT}`);
-    console.log(`Browser Mode: ${this.BROWSER_HEADLESS ? 'Headless' : 'GUI'}`);
-    console.log(`Upload Path: ${this.UPLOAD_PATH}`);
-    console.log(`Log File: ${this.LOG_FILE}`);
-    console.log('===================');
-  }
-
-  get isDevelopment(): boolean {
-  return this.NODE_ENV === 'development';
-}
-
-}
-
-// Singleton pattern - butun app da bitta config instance
-export const config = new Config();
-
-// Path utilities
-export const paths = {
-  root: path.resolve(__dirname, '../..'),
-  uploads: path.resolve(__dirname, '../..', config.UPLOAD_PATH),
-  logs: path.resolve(__dirname, '../..', 'logs'),
-  captchas: path.resolve(__dirname, '../..', 'uploads', 'captchas')
+  // Rate Limiting
+  RATE_LIMIT_WINDOW_MS: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
+  RATE_LIMIT_MAX_REQUESTS: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100', 10),
 };
+
+/**
+ * Majburiy environment variablelarni tekshirish
+ */
+const requiredEnvVars = ['DB_NAME', 'DB_USER'];
+
+const missingEnvVars = requiredEnvVars.filter(
+  (envVar) => !process.env[envVar]
+);
+
+if (missingEnvVars.length > 0) {
+  console.error(
+    `❌ Quyidagi environment variablelar topilmadi: ${missingEnvVars.join(', ')}`
+  );
+  console.error('   .env faylni tekshiring!');
+}
+
+/**
+ * Production uchun ogohlantirish
+ */
+if (config.isProduction) {
+  if (config.JWT_SECRET === 'super_secret_change_this') {
+    console.warn('⚠️  WARNING: JWT_SECRET default qiymatda! O\'zgartiring!');
+  }
+
+  if (config.ACCESS_TOKEN_SECRET === 'access_token_secret_change_this') {
+    console.warn('⚠️  WARNING: ACCESS_TOKEN_SECRET default qiymatda! O\'zgartiring!');
+  }
+
+  if (config.REFRESH_TOKEN_SECRET === 'refresh_token_secret_change_this') {
+    console.warn('⚠️  WARNING: REFRESH_TOKEN_SECRET default qiymatda! O\'zgartiring!');
+  }
+}
+
+export default config;

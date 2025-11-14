@@ -1,38 +1,38 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser'; // ✅ YANGI!
 import { config } from './config/env';
 import { connectDatabase, disconnectDatabase } from './config/database';
-import './modules/index'; // Modellarni import qilish - relationshiplar o'rnatiladi
+import './modules/index';
 
 // Routes
 import userRoutes from './modules/user/user.routes';
 import adminRoutes from './modules/admin/admin.routes';
 
-/**
- * Express applicationni yaratish va sozlash
- */
 const app: Application = express();
 
 /**
- * Middleware'lar - Har bir request orqali o'tadi
+ * Middleware'lar
  */
 
-// 1. CORS - boshqa domenlardan so'rov yuborishga ruxsat berish
+// 1. CORS
 app.use(cors({
-  origin: config.isDevelopment ? '*' : ['http://localhost:3000'], // Frontend URL
-  credentials: true,
+  origin: config.isDevelopment ? '*' : ['http://localhost:3000'],
+  credentials: true, // Cookie uchun kerak!
 }));
 
-// 2. JSON va URL-encoded ma'lumotlarni parse qilish
-app.use(express.json({ limit: '10mb' })); // JSON body uchun
-app.use(express.urlencoded({ extended: true, limit: '10mb' })); // Form data uchun
+// 2. Cookie Parser ✅ YANGI!
+app.use(cookieParser());
 
-// 3. Static fayllar - uploads papkasini ochiq qilish
+// 3. JSON va URL-encoded
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// 4. Static fayllar
 app.use('/uploads', express.static('uploads'));
 
 /**
- * Health check endpoint
- * Server ishlab turishini tekshirish uchun
+ * Health check
  */
 app.get('/', (req: Request, res: Response) => {
   res.json({
@@ -47,16 +47,11 @@ app.get('/', (req: Request, res: Response) => {
 /**
  * API routes
  */
-app.use('/api/auth', userRoutes);      // Autentifikatsiya
-app.use('/api/admin', adminRoutes);    // Admin panel
-// app.use('/api/imports', importRoutes); // Excel import - keyingi bosqich
-// app.use('/api/checks', checksRoutes);  // Checks CRUD - keyingi bosqich
-// app.use('/api/faktura', fakturaRoutes);// Faktura CRUD - keyingi bosqich
-// app.use('/api/select-checks', selectChecksRoutes); // Select checks - keyingi bosqich
-// app.use('/api/automation', automationRoutes);      // Browser automation - keyingi bosqich
+app.use('/api/auth', userRoutes);
+app.use('/api/admin', adminRoutes);
 
 /**
- * 404 - Route topilmadi
+ * 404
  */
 app.use((req: Request, res: Response) => {
   res.status(404).json({
@@ -66,8 +61,7 @@ app.use((req: Request, res: Response) => {
 });
 
 /**
- * Global error handler
- * Barcha xatolarni tutish va to'g'ri javob qaytarish
+ * Error handler
  */
 interface ErrorWithStatus extends Error {
   statusCode?: number;
@@ -76,29 +70,27 @@ interface ErrorWithStatus extends Error {
 
 app.use((err: ErrorWithStatus, req: Request, res: Response, next: NextFunction) => {
   console.error('❌ Server xatosi:', err);
-  
+
   const statusCode = err.statusCode || 500;
   const message = err.message || 'Serverda ichki xato';
-  
+
   res.status(statusCode).json({
     success: false,
     message,
-    ...(config.isDevelopment && { stack: err.stack }), // Dev rejimida stack trace
+    ...(config.isDevelopment && { stack: err.stack }),
   });
 });
 
 /**
- * Serverni ishga tushirish funktsiyasi
+ * Server start
  */
 const startServer = async () => {
   try {
-    // 1. Database ga ulanish
     await connectDatabase();
-    
-    // 2. Kerakli papkalarni yaratish
+
     const fs = require('fs');
     const path = require('path');
-    
+
     const dirs = ['uploads', 'logs', 'screenshots', 'captchas'];
     dirs.forEach(dir => {
       const dirPath = path.join(process.cwd(), dir);
@@ -107,8 +99,7 @@ const startServer = async () => {
         console.log(`📁 Papka yaratildi: ${dir}/`);
       }
     });
-    
-    // 3. Serverni ishga tushirish
+
     app.listen(config.PORT, () => {
       console.log('');
       console.log('═══════════════════════════════════════════════');
@@ -120,7 +111,6 @@ const startServer = async () => {
       console.log('═══════════════════════════════════════════════');
       console.log('');
     });
-    
   } catch (error) {
     console.error('❌ Server ishga tushmadi:', error);
     process.exit(1);
@@ -128,12 +118,11 @@ const startServer = async () => {
 };
 
 /**
- * Graceful shutdown - To'g'ri to'xtatish
- * SIGTERM yoki SIGINT signal kelganda
+ * Graceful shutdown
  */
 const gracefulShutdown = async (signal: string) => {
   console.log(`\n⚠️  ${signal} signal qabul qilindi. Server to'xtatilmoqda...`);
-  
+
   try {
     await disconnectDatabase();
     console.log('✅ Server to\'g\'ri to\'xtatildi');
@@ -144,11 +133,9 @@ const gracefulShutdown = async (signal: string) => {
   }
 };
 
-// Signal handlerlar
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-// Uncaught exceptionlar
 process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error);
   gracefulShutdown('UNCAUGHT_EXCEPTION');
@@ -159,7 +146,6 @@ process.on('unhandledRejection', (reason, promise) => {
   gracefulShutdown('UNHANDLED_REJECTION');
 });
 
-// Serverni ishga tushirish
 startServer();
 
 export default app;

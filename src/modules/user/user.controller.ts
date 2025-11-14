@@ -2,31 +2,57 @@ import { Request, Response } from 'express';
 import authService from '../../middlewares/authService';
 
 /**
+ * IP address ni olish helper function
+ */
+const getIpAddress = (req: Request): string => {
+  return (
+    (req.headers['x-forwarded-for'] as string)?.split(',')[0] ||
+    req.socket.remoteAddress ||
+    'unknown'
+  );
+};
+
+/**
+ * Cookie sozlamalari
+ */
+const getCookieOptions = () => {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict' as const,
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 kun
+  };
+};
+
+/**
  * User Controller
- * 
- * Bu controller autentifikatsiya endpointlari uchun
  */
 class UserController {
   /**
    * POST /api/auth/register
-   * 
-   * Yangi user ro'yxatdan o'tkazish
    */
   async register(req: Request, res: Response): Promise<void> {
     try {
-      const { user, token } = await authService.register(req.body);
+      const ipAddress = getIpAddress(req);
+      const { user, accessToken, refreshToken } = await authService.register(
+        req.body,
+        ipAddress
+      );
+
+      // Refresh token ni cookie ga saqlash
+      res.cookie('refreshToken', refreshToken, getCookieOptions());
 
       res.status(201).json({
         success: true,
         message: 'Muvaffaqiyatli ro\'yxatdan o\'tdingiz!',
         data: {
           user: user.toJSON(),
-          token,
+          accessToken,
         },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Ro\'yxatdan o\'tishda xato';
-      
+
       res.status(400).json({
         success: false,
         message,
@@ -36,24 +62,29 @@ class UserController {
 
   /**
    * POST /api/auth/login
-   * 
-   * Login qilish
    */
   async login(req: Request, res: Response): Promise<void> {
     try {
-      const { user, token } = await authService.login(req.body);
+      const ipAddress = getIpAddress(req);
+      const { user, accessToken, refreshToken } = await authService.login(
+        req.body,
+        ipAddress
+      );
+
+      // Refresh token ni cookie ga saqlash
+      res.cookie('refreshToken', refreshToken, getCookieOptions());
 
       res.status(200).json({
         success: true,
         message: 'Muvaffaqiyatli login qildingiz!',
         data: {
           user: user.toJSON(),
-          token,
+          accessToken,
         },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Login qilishda xato';
-      
+
       res.status(401).json({
         success: false,
         message,
@@ -62,15 +93,112 @@ class UserController {
   }
 
   /**
+   * POST /api/auth/refresh
+   */
+  async refreshToken(req: Request, res: Response): Promise<void> {
+    try {
+      const oldRefreshToken = req.cookies.refreshToken;
+
+      if (!oldRefreshToken) {
+        res.status(401).json({
+          success: false,
+          message: 'Refresh token topilmadi',
+        });
+        return;
+      }
+
+      const ipAddress = getIpAddress(req);
+      const { accessToken, refreshToken } = await authService.refreshAccessToken(
+        oldRefreshToken,
+        ipAddress
+      );
+
+      // Yangi refresh token ni cookie ga saqlash
+      res.cookie('refreshToken', refreshToken, getCookieOptions());
+
+      res.status(200).json({
+        success: true,
+        message: 'Token muvaffaqiyatli yangilandi',
+        data: {
+          accessToken,
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Token yangilashda xato';
+
+      // Cookie ni o'chirish
+      res.clearCookie('refreshToken');
+
+      res.status(401).json({
+        success: false,
+        message,
+      });
+    }
+  }
+
+  /**
+   * POST /api/auth/logout
+   */
+  async logout(req: Request, res: Response): Promise<void> {
+    try {
+      const refreshToken = req.cookies.refreshToken;
+      const ipAddress = getIpAddress(req);
+
+      if (refreshToken) {
+        await authService.logout(refreshToken, ipAddress);
+      }
+
+      // Cookie ni o'chirish
+      res.clearCookie('refreshToken');
+
+      res.status(200).json({
+        success: true,
+        message: 'Muvaffaqiyatli logout qildingiz',
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Logout qilishda xato',
+      });
+    }
+  }
+
+  /**
+   * POST /api/auth/logout-all
+   */
+  async logoutAll(req: Request, res: Response): Promise<void> {
+    try {
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          message: 'Autentifikatsiya talab qilinadi',
+        });
+        return;
+      }
+
+      const ipAddress = getIpAddress(req);
+      await authService.logoutAll(req.user.id, ipAddress);
+
+      // Cookie ni o'chirish
+      res.clearCookie('refreshToken');
+
+      res.status(200).json({
+        success: true,
+        message: 'Barcha qurilmalardan muvaffaqiyatli chiqildi',
+      });
+    } catch (error) {
+      res.status(500).json({
+        success: false,
+        message: 'Logout qilishda xato',
+      });
+    }
+  }
+
+  /**
    * GET /api/auth/me
-   * 
-   * Hozirgi userni olish (token orqali)
-   * 
-   * IZOH: authMiddleware orqali req.user allaqachon mavjud
    */
   async getMe(req: Request, res: Response): Promise<void> {
     try {
-      // authMiddleware req.user ni qo'shgan
       if (!req.user) {
         res.status(401).json({
           success: false,
@@ -95,8 +223,6 @@ class UserController {
 
   /**
    * PUT /api/auth/change-password
-   * 
-   * Parolni o'zgartirish
    */
   async changePassword(req: Request, res: Response): Promise<void> {
     try {
@@ -110,9 +236,8 @@ class UserController {
 
       const { oldPassword, newPassword } = req.body;
 
-      // Eski parolni tekshirish
       const isOldPasswordValid = await req.user.comparePassword(oldPassword);
-      
+
       if (!isOldPasswordValid) {
         res.status(400).json({
           success: false,
@@ -121,9 +246,8 @@ class UserController {
         return;
       }
 
-      // Yangi parolni o'rnatish
       await req.user.update({
-        password: newPassword,  // beforeUpdate hook avtomatik hash qiladi
+        password: newPassword,
       });
 
       res.status(200).json({
@@ -139,14 +263,12 @@ class UserController {
   }
 
   /**
-   * GET /api/auth/profile/:id (Admin only)
-   * 
-   * Boshqa userni olish
+   * GET /api/auth/profile/:id
    */
   async getUserById(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      
+
       const user = await authService.getUserById(parseInt(id, 10));
 
       if (!user) {

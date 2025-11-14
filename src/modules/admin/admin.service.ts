@@ -2,150 +2,117 @@ import { User } from '../index';
 
 /**
  * Admin Service
- * 
- * Admin panel uchun yordamchi funksiyalar
  */
 class AdminService {
   /**
    * Userni admin qilish
-   * 
-   * @param userId - User ID
-   * @returns Updated user
    */
   async makeAdmin(userId: number): Promise<User> {
     const user = await User.findByPk(userId);
-
-    if (!user) {
-      throw new Error('User topilmadi');
-    }
+    if (!user) throw new Error('User topilmadi');
 
     await user.update({ role: 'admin' });
-
     return user;
   }
 
   /**
-   * Adminni oddiy userga o'tkazish
-   * 
-   * @param userId - User ID
-   * @returns Updated user
+   * Admin roleni olib tashlash
    */
   async removeAdmin(userId: number): Promise<User> {
     const user = await User.findByPk(userId);
-
-    if (!user) {
-      throw new Error('User topilmadi');
-    }
+    if (!user) throw new Error('User topilmadi');
 
     if (user.role !== 'admin') {
       throw new Error('Bu user admin emas');
     }
 
     await user.update({ role: 'user' });
-
     return user;
   }
 
   /**
    * Userni bloklash
-   * 
-   * @param userId - User ID
-   * @returns Updated user
    */
   async blockUser(userId: number): Promise<User> {
     const user = await User.findByPk(userId);
-
-    if (!user) {
-      throw new Error('User topilmadi');
-    }
+    if (!user) throw new Error('User topilmadi');
 
     await user.update({ isActive: false });
-
     return user;
   }
 
   /**
    * Userni aktivlashtirish
-   * 
-   * @param userId - User ID
-   * @returns Updated user
    */
   async unblockUser(userId: number): Promise<User> {
     const user = await User.findByPk(userId);
-
-    if (!user) {
-      throw new Error('User topilmadi');
-    }
+    if (!user) throw new Error('User topilmadi');
 
     await user.update({ isActive: true });
-
     return user;
   }
 
   /**
    * Userning parolini reset qilish
-   * 
-   * @param userId - User ID
-   * @param newPassword - Yangi parol
-   * @returns Updated user
    */
   async resetUserPassword(userId: number, newPassword: string): Promise<User> {
     const user = await User.findByPk(userId);
+    if (!user) throw new Error('User topilmadi');
 
-    if (!user) {
-      throw new Error('User topilmadi');
-    }
-
+    // beforeUpdate hook avtomatik hash qiladi
     await user.update({ password: newPassword });
-
     return user;
   }
 
   /**
-   * Barcha admin userlarni olish
-   * 
-   * @returns Array of admin users
+   * User roleni o'zgartirish (universal)
+   */
+  async changeUserRole(userId: number, newRole: 'user' | 'admin'): Promise<User> {
+    const user = await User.findByPk(userId);
+    if (!user) throw new Error('User topilmadi');
+
+    await user.update({ role: newRole });
+    return user;
+  }
+
+  /**
+   * Barcha adminlarni olish
    */
   async getAllAdmins(): Promise<User[]> {
-    const admins = await User.findAll({
+    return await User.findAll({
       where: {
         role: 'admin',
         isActive: true,
       },
       order: [['createdAt', 'DESC']],
     });
-
-    return admins;
   }
 
   /**
-   * Aktiv userlar sonini olish
-   * 
-   * @returns Count of active users
+   * Aktiv userlar soni
    */
   async getActiveUsersCount(): Promise<number> {
-    const count = await User.count({
-      where: {
-        isActive: true,
-      },
+    return await User.count({
+      where: { isActive: true },
     });
-
-    return count;
   }
 
   /**
-   * Bloklangan userlar sonini olish
-   * 
-   * @returns Count of blocked users
+   * Bloklangan userlar soni
    */
   async getBlockedUsersCount(): Promise<number> {
-    const count = await User.count({
-      where: {
-        isActive: false,
-      },
+    return await User.count({
+      where: { isActive: false },
     });
+  }
 
-    return count;
+  /**
+   * Role bo'yicha userlar soni
+   */
+  async getUserCountByRole(role: 'user' | 'admin'): Promise<number> {
+    return await User.count({
+      where: { role },
+    });
   }
 }
 

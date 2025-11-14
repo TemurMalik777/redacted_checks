@@ -7,8 +7,6 @@ import authValidation from '../../middlewares/userValidation';
 
 /**
  * User Routes
- * 
- * Barcha autentifikatsiya endpointlari
  */
 const router = Router();
 
@@ -16,21 +14,13 @@ const router = Router();
  * POST /api/auth/register
  * 
  * Ro'yxatdan o'tish
- * 
- * Request body:
- * {
- *   "firstName": "John",
- *   "lastName": "Doe",
- *   "phone": "+998901234567",
- *   "email": "john@example.com",
- *   "username": "johndoe",
- *   "password": "password123",
- *   "role": "user" // optional
- * }
+ * - Parol avtomatik hash qilinadi
+ * - Access token (15 min) va Refresh token (7 kun) yaratiladi
+ * - Refresh token cookie ga saqlanadi
  */
 router.post(
   '/register',
-  authLimiter,  // Rate limiting - 5 requests per 15 minutes
+  authLimiter,
   validate(authValidation.register),
   userController.register
 );
@@ -39,51 +29,57 @@ router.post(
  * POST /api/auth/login
  * 
  * Login qilish
- * 
- * Request body:
- * {
- *   "username": "johndoe",
- *   "password": "password123"
- * }
- * 
- * Response:
- * {
- *   "success": true,
- *   "message": "Muvaffaqiyatli login qildingiz!",
- *   "data": {
- *     "user": { ... },
- *     "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
- *   }
- * }
+ * - Access token va Refresh token yaratiladi
+ * - Refresh token cookie ga saqlanadi
  */
 router.post(
   '/login',
-  authLimiter,  // Rate limiting - 5 requests per 15 minutes
+  authLimiter,
   validate(authValidation.login),
   userController.login
+);
+
+/**
+ * POST /api/auth/refresh
+ * 
+ * Token yangilash
+ * - Refresh token cookie dan olinadi
+ * - Yangi Access token va Refresh token yaratiladi
+ * - Eski Refresh token bekor qilinadi
+ */
+router.post(
+  '/refresh',
+  userController.refreshToken
+);
+
+/**
+ * POST /api/auth/logout
+ * 
+ * Logout qilish
+ * - Refresh token bekor qilinadi
+ * - Cookie o'chiriladi
+ */
+router.post(
+  '/logout',
+  userController.logout
+);
+
+/**
+ * POST /api/auth/logout-all
+ * 
+ * Barcha qurilmalardan chiqish
+ * - Barcha Refresh tokenlar bekor qilinadi
+ */
+router.post(
+  '/logout-all',
+  authMiddleware,
+  userController.logoutAll
 );
 
 /**
  * GET /api/auth/me
  * 
  * Hozirgi userni olish
- * 
- * Headers:
- * Authorization: Bearer <token>
- * 
- * Response:
- * {
- *   "success": true,
- *   "data": {
- *     "user": {
- *       "id": 1,
- *       "username": "johndoe",
- *       "email": "john@example.com",
- *       "role": "user",
- *       ...
- *     }
- *   }
- * }
  */
 router.get(
   '/me',
@@ -95,15 +91,6 @@ router.get(
  * PUT /api/auth/change-password
  * 
  * Parolni o'zgartirish
- * 
- * Headers:
- * Authorization: Bearer <token>
- * 
- * Request body:
- * {
- *   "oldPassword": "oldpass123",
- *   "newPassword": "newpass456"
- * }
  */
 router.put(
   '/change-password',
@@ -116,9 +103,6 @@ router.put(
  * GET /api/auth/profile/:id
  * 
  * User ID bo'yicha ma'lumot olish (Admin only)
- * 
- * Headers:
- * Authorization: Bearer <admin-token>
  */
 router.get(
   '/profile/:id',
