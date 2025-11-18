@@ -1,171 +1,314 @@
-import { Request, Response, NextFunction } from 'express';
-import authService from './authService';
-import { User } from '../modules/index';
+import jwt, { SignOptions, Secret } from 'jsonwebtoken';
+import crypto from 'crypto';
+import bcrypt from 'bcrypt';
+import { User, RefreshToken } from '../modules/index';
+import { config } from '../config/env';
 
 /**
- * Request obyektiga user qo'shish uchun interfeys
- * 
- * TypeScript da Request obyektiga custom property qo'shish uchun
- * bu yondashuv ishlatiladi
+ * JWT Token Payload
  */
-declare global {
-  namespace Express {
-    interface Request {
-      user?: User;
-    }
-  }
+interface TokenPayload {
+  id: number;
+  username: string;
+  role: 'user' | 'admin';
+  type: 'access';
 }
 
 /**
- * Authentication Middleware
- * 
- * Bu middleware har bir protected route uchun ishlatiladi
- * JWT token ni tekshiradi va request ga user obyektini qo'shadi
- * 
- * FOYDALANISH:
- * app.get('/protected-route', authMiddleware, (req, res) => {
- *   // req.user mavjud
- * });
+ * Auth Response
  */
-export const authMiddleware = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    // 1. Token ni headerdan olish
-    // Format: "Bearer <token>"
-    const authHeader = req.headers.authorization;
+interface AuthResponse {
+  user: User;
+  accessToken: string;
+  refreshToken: string;
+}
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({
-        success: false,
-        message: 'Token topilmadi. Iltimos login qiling.',
-      });
-      return;
-    }
+export interface RegisterDTO {
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  username: string;
+  password: string; // ✅ Frontend'dan oddiy parol keladi
+}
 
-    // "Bearer " ni olib tashlash
-    const token = authHeader.substring(7);
+export interface LoginDTO {
+  username: string;
+  password: string;
+}
 
-    // 2. Token ni verify qilish va userni topish
-    const user = await authService.getUserByToken(token);
+/**
+ * Auth Service - RefreshToken jadvali bilan
+ */
+class AuthService {
+  /**
+   * Access Token yaratish (15 daqiqa)
+   */
+  generateAccessToken(user: User): string {
+    const payload: TokenPayload = {
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      type: 'access',
+    };
 
-    if (!user) {
-      res.status(401).json({
-        success: false,
-        message: 'Token yaroqsiz yoki muddati o\'tgan.',
-      });
-      return;
-    }
-
-    // 3. User obyektini request ga qo'shish
-    req.user = user;
-
-    // 4. Keyingi middleware ga o'tish
-    next();
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Token tekshirishda xato',
-    });
+    return jwt.sign(
+      payload,
+      config.ACCESS_TOKEN_SECRET as Secret,
+      { expiresIn: config.ACCESS_TOKEN_EXPIRES_IN || '15m' }
+    );
   }
-};
 
-/**
- * Role Check Middleware Factory
- * 
- * Bu funksiya berilgan role(lar) uchun middleware yaratadi
- * 
- * FOYDALANISH:
- * app.get('/admin-only', authMiddleware, requireRole('admin'), (req, res) => {
- *   // Faqat adminlar kirishi mumkin
- * });
- * 
- * app.get('/user-or-admin', authMiddleware, requireRole(['user', 'admin']), (req, res) => {
- *   // User yoki admin kirishi mumkin
- * });
- */
-export const requireRole = (roles: string | string[]) => {
-  return (req: Request, res: Response, next: NextFunction): void => {
-    // authMiddleware avval ishlab, req.user ni qo'shgan bo'lishi kerak
-    if (!req.user) {
-      res.status(401).json({
-        success: false,
-        message: 'Autentifikatsiya talab qilinadi',
-      });
-      return;
+  /**
+   * Refresh Token yaratish (7 kun)
+   */
+  generateRefreshToken(): string {
+    return crypto.randomBytes(64).toString('hex');
+  }
+
+  /**
+   * Refresh token expires date hisoblash
+   */
+  getRefreshTokenExpiry(): Date {
+    const expiresAt = new Date();
+    const days = parseInt(config.REFRESH_TOKEN_EXPIRES_IN.replace('d', '')) || 7;
+    expiresAt.setDate(expiresAt.getDate() + days);
+    return expiresAt;
+  }
+
+  /**
+   * Access Token verify
+   */
+  verifyAccessToken(token: string): TokenPayload | null {
+    try {
+      const decoded = jwt.verify(
+        token,
+        config.ACCESS_TOKEN_SECRET as Secret
+      ) as TokenPayload;
+
+      if (decoded.type !== 'access') {
+        return null;
+      }
+
+      return decoded;
+    } catch (error) {
+      return null;
     }
+  }
 
-    // Roles ni array ga aylantirish
-    const allowedRoles = Array.isArray(roles) ? roles : [roles];
+  /**
+   * Ro'yxatdan o'tish
+   */
+  async register(data: RegisterDTO, ipAddress?: string): Promise<AuthResponse> {
+    // Mavjud userlarni tekshirish
+    const existingUser = await User.findOne({ where: { username: data.username } });
+    if (existingUser) throw new Error('Bu username allaqachon band');
 
-    // User role ni tekshirish
-    if (!allowedRoles.includes(req.user.role)) {
-      res.status(403).json({
-        success: false,
-        message: 'Sizda bu amalni bajarish uchun ruxsat yo\'q',
-        requiredRoles: allowedRoles,
-        yourRole: req.user.role,
-      });
-      return;
-    }
+    const existingEmail = await User.findOne({ where: { email: data.email } });
+    if (existingEmail) throw new Error('Bu email allaqachon ro\'yxatdan o\'tgan');
 
-    // Role to'g'ri - davom etish
-    next();
-  };
-};
+    const existingPhone = await User.findOne({ where: { phone: data.phone } });
+    if (existingPhone) throw new Error('Bu telefon raqam allaqachon ro\'yxatdan o\'tgan');
 
-/**
- * Admin Only Middleware
- * 
- * Faqat adminlar uchun shorthand
- * 
- * FOYDALANISH:
- * app.get('/admin-panel', authMiddleware, adminOnly, (req, res) => {
- *   // Faqat adminlar
- * });
- */
-export const adminOnly = requireRole('admin');
+    // ✅ User yaratish - hook avtomatik hash qiladi
+    const user = await User.create({
+      firstName: data.firstName,
+      lastName: data.lastName,
+      phone: data.phone,
+      email: data.email,
+      username: data.username,
+      hashpassword: data.password, // ✅ Hook hash qiladi
+    });
 
-/**
- * Optional Auth Middleware
- * 
- * Token bo'lsa - verify qiladi, yo'q bo'lsa - davom etadi
- * 
- * Public endpointlar uchun foydali, agar user login qilgan bo'lsa,
- * personalized ma'lumot ko'rsatish mumkin
- * 
- * FOYDALANISH:
- * app.get('/public-data', optionalAuth, (req, res) => {
- *   if (req.user) {
- *     // Login qilgan user
- *   } else {
- *     // Mehmon
- *   }
- * });
- */
-export const optionalAuth = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
-  try {
-    const authHeader = req.headers.authorization;
+    // ✅ Refresh Token yaratish va jadvalga saqlash
+    const refreshTokenString = this.generateRefreshToken();
+    const expiresAt = this.getRefreshTokenExpiry();
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-      const user = await authService.getUserByToken(token);
-      
-      if (user) {
-        req.user = user;
+    // ✅ Refresh token'ni hash qilib saqlash
+    const hashedRefreshToken = await bcrypt.hash(refreshTokenString, 10);
+
+    await RefreshToken.create({
+      userId: user.id,
+      token: hashedRefreshToken, // ✅ Hash qilingan
+      expiresAt,
+      createdByIp: ipAddress,
+      isActive: true,
+    });
+
+    const accessToken = this.generateAccessToken(user);
+
+    return { 
+      user, 
+      accessToken, 
+      refreshToken: refreshTokenString // ✅ Cookiega oddiy token yuboramiz
+    };
+  }
+
+  /**
+   * Login qilish
+   */
+  async login(data: LoginDTO, ipAddress?: string): Promise<AuthResponse> {
+    const user = await User.findOne({ where: { username: data.username } });
+    if (!user) throw new Error('Username yoki parol noto\'g\'ri');
+
+    if (!user.isActive) throw new Error('Sizning hisobingiz bloklangan');
+
+    // ✅ Parolni tekshirish
+    const isPasswordValid = await user.comparePassword(data.password);
+    if (!isPasswordValid) throw new Error('Username yoki parol noto\'g\'ri');
+
+    // ✅ Refresh Token yaratish
+    const refreshTokenString = this.generateRefreshToken();
+    const expiresAt = this.getRefreshTokenExpiry();
+    const hashedRefreshToken = await bcrypt.hash(refreshTokenString, 10);
+
+    await RefreshToken.create({
+      userId: user.id,
+      token: hashedRefreshToken,
+      expiresAt,
+      createdByIp: ipAddress,
+      isActive: true,
+    });
+
+    // ✅ lastLoginAt yangilash
+    await user.update({ lastLoginAt: new Date() });
+
+    const accessToken = this.generateAccessToken(user);
+
+    return { 
+      user, 
+      accessToken, 
+      refreshToken: refreshTokenString 
+    };
+  }
+
+  /**
+   * Token yangilash
+   */
+  async refreshAccessToken(
+    oldRefreshToken: string,
+    ipAddress?: string
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    // ✅ Barcha aktiv tokenlarni olamiz
+    const activeTokens = await RefreshToken.findAll({
+      where: {
+        isActive: true,
+        expiresAt: { [require('sequelize').Op.gt]: new Date() }
+      },
+    });
+
+    // ✅ Qaysi token mos kelishini topamiz
+    let matchedToken: any = null;
+    for (const tokenRecord of activeTokens) {
+      const isMatch = await bcrypt.compare(oldRefreshToken, tokenRecord.token);
+      if (isMatch) {
+        matchedToken = tokenRecord;
+        break;
       }
     }
 
-    // Token yo'q yoki yaroqsiz bo'lsa ham davom etadi
-    next();
-  } catch (error) {
-    // Xato bo'lsa ham davom etadi
-    next();
+    if (!matchedToken) {
+      throw new Error('Refresh token yaroqsiz yoki muddati tugagan');
+    }
+
+    // ✅ Userni topamiz
+    const user = await User.findByPk(matchedToken.userId);
+    if (!user || !user.isActive) {
+      throw new Error('User topilmadi yoki bloklangan');
+    }
+
+    // ✅ Yangi refresh token yaratamiz
+    const newRefreshTokenString = this.generateRefreshToken();
+    const expiresAt = this.getRefreshTokenExpiry();
+    const hashedNewRefreshToken = await bcrypt.hash(newRefreshTokenString, 10);
+
+    // ✅ Eski tokenni bekor qilamiz
+    await matchedToken.update({
+      isActive: false,
+      revokedAt: new Date(),
+      revokedByIp: ipAddress,
+      replacedByToken: hashedNewRefreshToken,
+    });
+
+    // ✅ Yangi tokenni saqlaymiz
+    await RefreshToken.create({
+      userId: user.id,
+      token: hashedNewRefreshToken,
+      expiresAt,
+      createdByIp: ipAddress,
+      isActive: true,
+    });
+
+    const accessToken = this.generateAccessToken(user);
+
+    return { 
+      accessToken, 
+      refreshToken: newRefreshTokenString 
+    };
   }
-};
+
+  /**
+   * Logout
+   */
+  async logout(refreshToken: string, ipAddress?: string): Promise<void> {
+    const activeTokens = await RefreshToken.findAll({
+      where: { isActive: true },
+    });
+
+    for (const tokenRecord of activeTokens) {
+      const isMatch = await bcrypt.compare(refreshToken, tokenRecord.token);
+      if (isMatch) {
+        await tokenRecord.update({
+          isActive: false,
+          revokedAt: new Date(),
+          revokedByIp: ipAddress,
+        });
+        break;
+      }
+    }
+  }
+
+  /**
+   * Barcha qurilmalardan logout
+   */
+  async logoutAll(userId: number, ipAddress?: string): Promise<void> {
+    await RefreshToken.update(
+      {
+        isActive: false,
+        revokedAt: new Date(),
+        revokedByIp: ipAddress,
+      },
+      {
+        where: { 
+          userId,
+          isActive: true 
+        },
+      }
+    );
+  }
+
+  /**
+   * Token orqali userni topish
+   */
+  async getUserByToken(token: string): Promise<User | null> {
+    const payload = this.verifyAccessToken(token);
+    if (!payload) return null;
+
+    const user = await User.findByPk(payload.id);
+    if (!user || !user.isActive) return null;
+
+    return user;
+  }
+
+  /**
+   * ID bo'yicha userni topish
+   */
+  async getUserById(id: number): Promise<User | null> {
+    const user = await User.findByPk(id);
+    if (!user || !user.isActive) return null;
+
+    return user;
+  }
+}
+
+export default new AuthService();

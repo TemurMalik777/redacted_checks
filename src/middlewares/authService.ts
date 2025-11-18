@@ -1,7 +1,6 @@
 import jwt, { SignOptions, Secret } from 'jsonwebtoken';
 import crypto from 'crypto';
 import { User } from '../modules/index';
-import RefreshToken from '../modules/user/refreshToken.model';
 import { config } from '../config/env';
 
 /**
@@ -11,7 +10,7 @@ interface TokenPayload {
   id: number;
   username: string;
   role: 'user' | 'admin';
-  type: 'access' | 'refresh';
+  type: 'access';
 }
 
 /**
@@ -23,9 +22,6 @@ interface AuthResponse {
   refreshToken: string;
 }
 
-/**
- * Register DTO
- */
 export interface RegisterDTO {
   firstName: string;
   lastName: string;
@@ -33,19 +29,15 @@ export interface RegisterDTO {
   email: string;
   username: string;
   password: string;
-  role?: 'user' | 'admin';
 }
 
-/**
- * Login DTO
- */
 export interface LoginDTO {
   username: string;
   password: string;
 }
 
 /**
- * Auth Service
+ * Auth Service - ODDIY VARIANT
  */
 class AuthService {
   /**
@@ -59,49 +51,32 @@ class AuthService {
       type: 'access',
     };
 
-    const options: SignOptions = {
-      expiresIn: config.ACCESS_TOKEN_EXPIRES_IN || '15m',
-    };
-
     return jwt.sign(
       payload,
       config.ACCESS_TOKEN_SECRET as Secret,
-      options
+      { expiresIn: config.ACCESS_TOKEN_EXPIRES_IN || '15m' }
     );
   }
 
   /**
    * Refresh Token yaratish (7 kun)
-   * 
-   * Crypto yordamida random token
    */
   generateRefreshToken(): string {
     return crypto.randomBytes(64).toString('hex');
   }
 
   /**
-   * Refresh Token ni database ga saqlash
+   * Refresh token expires date hisoblash
    */
-  async saveRefreshToken(
-    userId: number,
-    token: string,
-    ipAddress?: string
-  ): Promise<RefreshToken> {
-    // Expires date hisoblash
+  getRefreshTokenExpiry(): Date {
     const expiresAt = new Date();
-    const daysToAdd = parseInt(config.REFRESH_TOKEN_EXPIRES_IN.replace('d', '')) || 7;
-    expiresAt.setDate(expiresAt.getDate() + daysToAdd);
-
-    return await RefreshToken.create({
-      userId,
-      token,
-      expiresAt,
-      createdByIp: ipAddress,
-    });
+    const days = parseInt(config.REFRESH_TOKEN_EXPIRES_IN.replace('d', '')) || 7;
+    expiresAt.setDate(expiresAt.getDate() + days);
+    return expiresAt;
   }
 
   /**
-   * Access Token verify qilish
+   * Access Token verify
    */
   verifyAccessToken(token: string): TokenPayload | null {
     try {
@@ -121,39 +96,10 @@ class AuthService {
   }
 
   /**
-   * Refresh Token verify qilish
-   */
-  async verifyRefreshToken(token: string): Promise<RefreshToken | null> {
-    const refreshToken = await RefreshToken.findOne({
-      where: {
-        token,
-        isActive: true,
-      },
-      include: [
-        {
-          model: User,
-          as: 'user',
-        },
-      ],
-    });
-
-    if (!refreshToken) return null;
-
-    if (refreshToken.isExpired()) {
-      return null;
-    }
-
-    if (refreshToken.isRevoked()) {
-      return null;
-    }
-
-    return refreshToken;
-  }
-
-  /**
    * Ro'yxatdan o'tish
    */
   async register(data: RegisterDTO, ipAddress?: string): Promise<AuthResponse> {
+    // Mavjud userlarni tekshirish
     const existingUser = await User.findOne({ where: { username: data.username } });
     if (existingUser) throw new Error('Bu username allaqachon band');
 
@@ -163,20 +109,23 @@ class AuthService {
     const existingPhone = await User.findOne({ where: { phone: data.phone } });
     if (existingPhone) throw new Error('Bu telefon raqam allaqachon ro\'yxatdan o\'tgan');
 
+    // Tokenlar yaratish
+    const refreshToken = this.generateRefreshToken();
+    const refreshTokenExpires = this.getRefreshTokenExpiry();
+
+    // User yaratish
     const user = await User.create({
       firstName: data.firstName,
       lastName: data.lastName,
       phone: data.phone,
       email: data.email,
       username: data.username,
-      password: data.password,
-      role: data.role || 'user',
+      hashpassword: data.password,
+      hashedRefreshToken: refreshToken,              // ✅ User jadvaliga
+      refreshTokenExpires,       // ✅ User jadvaliga
     });
 
     const accessToken = this.generateAccessToken(user);
-    const refreshToken = this.generateRefreshToken();
-
-    await this.saveRefreshToken(user.id, refreshToken, ipAddress);
 
     return { user, accessToken, refreshToken };
   }
@@ -193,12 +142,18 @@ class AuthService {
     const isPasswordValid = await user.comparePassword(data.password);
     if (!isPasswordValid) throw new Error('Username yoki parol noto\'g\'ri');
 
-    await user.update({ lastLoginAt: new Date() });
+    // Yangi tokenlar yaratish
+    const refreshToken = this.generateRefreshToken();
+    const refreshTokenExpires = this.getRefreshTokenExpiry();
+
+    // User ni yangilash
+    await user.update({
+      hashedRefreshToken: refreshToken,
+      refreshTokenExpires,
+      lastLoginAt: new Date(),
+    });
 
     const accessToken = this.generateAccessToken(user);
-    const refreshToken = this.generateRefreshToken();
-
-    await this.saveRefreshToken(user.id, refreshToken, ipAddress);
 
     return { user, accessToken, refreshToken };
   }
@@ -210,30 +165,33 @@ class AuthService {
     oldRefreshToken: string,
     ipAddress?: string
   ): Promise<{ accessToken: string; refreshToken: string }> {
-    const tokenRecord = await this.verifyRefreshToken(oldRefreshToken);
+    // Refresh token orqali userni topish
+    const user = await User.findOne({
+      where: {
+        hashedRefreshToken: oldRefreshToken,
+        isActive: true,
+      },
+    });
 
-    if (!tokenRecord) {
-      throw new Error('Refresh token yaroqsiz yoki muddati tugagan');
+    if (!user) {
+      throw new Error('Refresh token yaroqsiz');
     }
 
-    const user = await User.findByPk(tokenRecord.userId);
-    if (!user || !user.isActive) {
-      throw new Error('User topilmadi yoki faol emas');
+    // Token muddatini tekshirish
+    if (!user.isRefreshTokenValid()) {
+      throw new Error('Refresh token muddati tugagan');
     }
 
-    await tokenRecord.update({
-      revokedAt: new Date(),
-      revokedByIp: ipAddress,
+    // Yangi tokenlar yaratish
+    const newRefreshToken = this.generateRefreshToken();
+    const refreshTokenExpires = this.getRefreshTokenExpiry();
+
+    await user.update({
+      hashedRefreshToken: newRefreshToken,
+      refreshTokenExpires,
     });
 
     const accessToken = this.generateAccessToken(user);
-    const newRefreshToken = this.generateRefreshToken();
-
-    await this.saveRefreshToken(user.id, newRefreshToken, ipAddress);
-
-    await tokenRecord.update({
-      replacedByToken: newRefreshToken,
-    });
 
     return { accessToken, refreshToken: newRefreshToken };
   }
@@ -242,34 +200,29 @@ class AuthService {
    * Logout
    */
   async logout(refreshToken: string, ipAddress?: string): Promise<void> {
-    const tokenRecord = await RefreshToken.findOne({
-      where: { token: refreshToken },
+    const user = await User.findOne({
+      where: { hashedRefreshToken: refreshToken},
     });
 
-    if (tokenRecord) {
-      await tokenRecord.update({
-        revokedAt: new Date(),
-        revokedByIp: ipAddress,
-        isActive: false,
+    if (user) {
+      await user.update({
+        hashedRefreshToken: undefined,
+        refreshTokenExpires: undefined,
       });
     }
   }
 
   /**
-   * Barcha tokenlarni bekor qilish
+   * Barcha qurilmalardan logout
    */
   async logoutAll(userId: number, ipAddress?: string): Promise<void> {
-    await RefreshToken.update(
+    await User.update(
       {
-        revokedAt: new Date(),
-        revokedByIp: ipAddress,
-        isActive: false,
+        hashedRefreshToken: undefined,
+        refreshTokenExpires: undefined,
       },
       {
-        where: {
-          userId,
-          isActive: true,
-        },
+        where: { id: userId },
       }
     );
   }

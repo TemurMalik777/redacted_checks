@@ -3,7 +3,9 @@ import { z } from 'zod';
 /**
  * Register validation schema
  * 
- * Bu schema register endpoint uchun request body ni validate qiladi
+ * ❌ MUHIM: role maydoni YO'Q!
+ * Hamma user bo'lib ro'yxatdan o'tadi
+ * Admin qilish faqat database orqali
  */
 export const registerSchema = z.object({
   firstName: z
@@ -60,12 +62,9 @@ export const registerSchema = z.object({
     .min(6, 'Parol kamida 6 ta belgidan iborat bo\'lishi kerak')
     .max(255, 'Parol 255 ta belgidan oshmasligi kerak'),
 
-  role: z
-    .enum(['user', 'admin'], {
-      message: 'Role faqat "user" yoki "admin" bo\'lishi mumkin',
-    })
-    .optional()
-    .default('user'),
+  // ❌ role maydoni OLIB TASHLANDI!
+  // Register da hamma user bo'ladi
+  // Admin qilish faqat database orqali
 });
 
 /**
