@@ -1,5 +1,6 @@
-import jwt, { SignOptions, Secret } from 'jsonwebtoken';
+import jwt, { Secret } from 'jsonwebtoken';
 import crypto from 'crypto';
+import bcrypt from 'bcrypt';
 import { User } from '../modules/index';
 import { config } from '../config/env';
 
@@ -37,7 +38,7 @@ export interface LoginDTO {
 }
 
 /**
- * Auth Service - ODDIY VARIANT
+ * Auth Service - User jadvalida saqlash
  */
 class AuthService {
   /**
@@ -59,7 +60,7 @@ class AuthService {
   }
 
   /**
-   * Refresh Token yaratish (7 kun)
+   * Refresh Token yaratish
    */
   generateRefreshToken(): string {
     return crypto.randomBytes(64).toString('hex');
@@ -99,7 +100,6 @@ class AuthService {
    * Ro'yxatdan o'tish
    */
   async register(data: RegisterDTO, ipAddress?: string): Promise<AuthResponse> {
-    // Mavjud userlarni tekshirish
     const existingUser = await User.findOne({ where: { username: data.username } });
     if (existingUser) throw new Error('Bu username allaqachon band');
 
@@ -109,11 +109,17 @@ class AuthService {
     const existingPhone = await User.findOne({ where: { phone: data.phone } });
     if (existingPhone) throw new Error('Bu telefon raqam allaqachon ro\'yxatdan o\'tgan');
 
-    // Tokenlar yaratish
-    const refreshToken = this.generateRefreshToken();
+    // Refresh Token yaratish
+    const refreshTokenString = this.generateRefreshToken();
+    console.log('🔑 Refresh token yaratildi:', refreshTokenString.substring(0, 20) + '...');
+    
     const refreshTokenExpires = this.getRefreshTokenExpiry();
+    
+    // ✅ Hash qilish
+    const hashedRefreshToken = await bcrypt.hash(refreshTokenString, 10);
+    console.log('🔒 Refresh token hash qilindi:', hashedRefreshToken.substring(0, 30) + '...');
 
-    // User yaratish
+    // ✅ User yaratish - parol va refresh token bilan
     const user = await User.create({
       firstName: data.firstName,
       lastName: data.lastName,
@@ -121,13 +127,18 @@ class AuthService {
       email: data.email,
       username: data.username,
       hashpassword: data.password,
-      hashedRefreshToken: refreshToken,              // ✅ User jadvaliga
-      refreshTokenExpires,       // ✅ User jadvaliga
+      hashedRefreshToken, // ✅ USER JADVALIGA
+      refreshTokenExpires, // ✅ USER JADVALIGA
     });
+    console.log('💾 User va refresh token database ga saqlandi');
 
     const accessToken = this.generateAccessToken(user);
 
-    return { user, accessToken, refreshToken };
+    return { 
+      user, 
+      accessToken, 
+      refreshToken: refreshTokenString // ✅ Cookie uchun oddiy
+    };
   }
 
   /**
@@ -142,20 +153,29 @@ class AuthService {
     const isPasswordValid = await user.comparePassword(data.password);
     if (!isPasswordValid) throw new Error('Username yoki parol noto\'g\'ri');
 
-    // Yangi tokenlar yaratish
-    const refreshToken = this.generateRefreshToken();
+    // Yangi refresh token
+    const refreshTokenString = this.generateRefreshToken();
+    console.log('🔑 Login: Refresh token yaratildi');
+    
     const refreshTokenExpires = this.getRefreshTokenExpiry();
+    const hashedRefreshToken = await bcrypt.hash(refreshTokenString, 10);
+    console.log('🔒 Login: Refresh token hash qilindi');
 
-    // User ni yangilash
+    // ✅ User jadvalida yangilash
     await user.update({
-      hashedRefreshToken: refreshToken,
+      hashedRefreshToken,
       refreshTokenExpires,
       lastLoginAt: new Date(),
     });
+    console.log('💾 Login: Refresh token user jadvalida yangilandi');
 
     const accessToken = this.generateAccessToken(user);
 
-    return { user, accessToken, refreshToken };
+    return { 
+      user, 
+      accessToken, 
+      refreshToken: refreshTokenString 
+    };
   }
 
   /**
@@ -165,50 +185,81 @@ class AuthService {
     oldRefreshToken: string,
     ipAddress?: string
   ): Promise<{ accessToken: string; refreshToken: string }> {
-    // Refresh token orqali userni topish
-    const user = await User.findOne({
+    console.log('🔄 Refresh token yangilanmoqda...');
+
+    // ✅ Barcha active userlarni topish
+    const users = await User.findAll({
       where: {
-        hashedRefreshToken: oldRefreshToken,
         isActive: true,
+        hashedRefreshToken: { [require('sequelize').Op.ne]: null },
       },
     });
 
-    if (!user) {
+    // ✅ Qaysi user refresh tokeniga mos kelishini topish
+    let matchedUser: User | null = null;
+    for (const user of users) {
+      if (user.hashedRefreshToken) {
+        const isMatch = await bcrypt.compare(oldRefreshToken, user.hashedRefreshToken);
+        if (isMatch) {
+          matchedUser = user;
+          break;
+        }
+      }
+    }
+
+    if (!matchedUser) {
       throw new Error('Refresh token yaroqsiz');
     }
 
-    // Token muddatini tekshirish
-    if (!user.isRefreshTokenValid()) {
+    // ✅ Token muddatini tekshirish
+    if (!matchedUser.isRefreshTokenValid()) {
       throw new Error('Refresh token muddati tugagan');
     }
+    console.log('✅ Eski token topildi va tekshirildi');
 
-    // Yangi tokenlar yaratish
-    const newRefreshToken = this.generateRefreshToken();
+    // Yangi refresh token
+    const newRefreshTokenString = this.generateRefreshToken();
     const refreshTokenExpires = this.getRefreshTokenExpiry();
+    const hashedRefreshToken = await bcrypt.hash(newRefreshTokenString, 10);
 
-    await user.update({
-      hashedRefreshToken: newRefreshToken,
+    await matchedUser.update({
+      hashedRefreshToken,
       refreshTokenExpires,
     });
+    console.log('✅ Yangi token yaratildi va saqlandi');
 
-    const accessToken = this.generateAccessToken(user);
+    const accessToken = this.generateAccessToken(matchedUser);
 
-    return { accessToken, refreshToken: newRefreshToken };
+    return { 
+      accessToken, 
+      refreshToken: newRefreshTokenString 
+    };
   }
 
   /**
    * Logout
    */
   async logout(refreshToken: string, ipAddress?: string): Promise<void> {
-    const user = await User.findOne({
-      where: { hashedRefreshToken: refreshToken},
+    console.log('👋 Logout qilinmoqda...');
+
+    const users = await User.findAll({
+      where: {
+        hashedRefreshToken: { [require('sequelize').Op.ne]: null },
+      },
     });
 
-    if (user) {
-      await user.update({
-        hashedRefreshToken: undefined,
-        refreshTokenExpires: undefined,
-      });
+    for (const user of users) {
+      if (user.hashedRefreshToken) {
+        const isMatch = await bcrypt.compare(refreshToken, user.hashedRefreshToken);
+        if (isMatch) {
+          await user.update({
+            hashedRefreshToken: undefined,
+            refreshTokenExpires: undefined,
+          });
+          console.log('✅ Refresh token o\'chirildi');
+          break;
+        }
+      }
     }
   }
 
@@ -216,6 +267,8 @@ class AuthService {
    * Barcha qurilmalardan logout
    */
   async logoutAll(userId: number, ipAddress?: string): Promise<void> {
+    console.log('👋 Barcha qurilmalardan logout...');
+    
     await User.update(
       {
         hashedRefreshToken: undefined,
@@ -225,6 +278,7 @@ class AuthService {
         where: { id: userId },
       }
     );
+    console.log('✅ User refresh tokeni o\'chirildi');
   }
 
   /**
@@ -247,28 +301,6 @@ class AuthService {
     const user = await User.findByPk(id);
     if (!user || !user.isActive) return null;
 
-    return user;
-  }
-
-  /**
-   * Userni admin qilish
-   */
-  async makeAdmin(userId: number): Promise<User> {
-    const user = await User.findByPk(userId);
-    if (!user) throw new Error('User topilmadi');
-
-    await user.update({ role: 'admin' });
-    return user;
-  }
-
-  /**
-   * Admin roleni olib tashlash
-   */
-  async removeAdmin(userId: number): Promise<User> {
-    const user = await User.findByPk(userId);
-    if (!user) throw new Error('User topilmadi');
-
-    await user.update({ role: 'user' });
     return user;
   }
 }

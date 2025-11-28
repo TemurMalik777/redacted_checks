@@ -29,21 +29,27 @@ export interface UserCreationAttributes
  * User Model
  */
 class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
-  public id!: number;
-  public firstName!: string;
-  public lastName!: string;
-  public phone!: string;
-  public email!: string;
-  public username!: string;
-  public hashpassword!: string;
-  public role!: 'user' | 'admin';
-  public isActive!: boolean;
-  public hashedRefreshToken?: string;
-  public refreshTokenExpires?: Date;
-  public lastLoginAt?: Date;
+  // ❌ OLIB TASHLANG - Bu class fieldlar Sequelize bilan konflikt qiladi
+  // public id!: number;
+  // public firstName!: string;
+  // ...
+
+  // ✅ FAQAT DECLARE qiling
+  declare id: number;
+  declare firstName: string;
+  declare lastName: string;
+  declare phone: string;
+  declare email: string;
+  declare username: string;
+  declare hashpassword: string;
+  declare role: 'user' | 'admin';
+  declare isActive: boolean;
+  declare hashedRefreshToken?: string;
+  declare refreshTokenExpires?: Date;
+  declare lastLoginAt?: Date;
   
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
 
   /**
    * Parolni tekshirish
@@ -67,7 +73,7 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
    */
   public toJSON(): Partial<UserAttributes> {
     const values = { ...this.get() };
-    delete (values as any).password;
+    delete (values as any).hashpassword;
     delete (values as any).hashedRefreshToken;
     return values;
   }
@@ -111,7 +117,7 @@ User.init(
     hashpassword: {
       type: DataTypes.STRING(255),
       allowNull: false,
-      // ❌ FIELD BERILMAYDI - Sequelize avtomatik 'password' ishlatadi
+      field: 'hashpassword', // ✅ DATABASE DA hashpassword
     },
     role: {
       type: DataTypes.ENUM('user', 'admin'),
@@ -147,57 +153,31 @@ User.init(
     underscored: true,
     
     /**
-     * HOOKS - MUHIM!
-     * 
-     * Bu hooklar har doim ishlaydi:
-     * - beforeCreate: User.create() chaqirilganda
-     * - beforeUpdate: user.update() chaqirilganda
-     * - beforeSave: create yoki update dan oldin
+     * HOOKS - Parolni hash qilish
      */
     hooks: {
-      /**
-       * CREATE dan oldin
-       */
       beforeCreate: async (user: User) => {
         console.log('🔒 beforeCreate hook ishga tushdi');
         console.log('📝 Parol (oldin):', user.hashpassword);
         
-        if (user.hashpassword) {
+        if (user.hashpassword && !user.hashpassword.startsWith('$2b$')) {
           const salt = await bcrypt.genSalt(10);
           user.hashpassword = await bcrypt.hash(user.hashpassword, salt);
-          console.log('✅ Parol hash qilindi:', user.hashpassword);
+          console.log('✅ Parol hash qilindi');
         }
       },
       
-      /**
-       * UPDATE dan oldin
-       */
       beforeUpdate: async (user: User) => {
         console.log('🔒 beforeUpdate hook ishga tushdi');
         
-        // Faqat parol o'zgarganda hash qilish
         if (user.changed('hashpassword')) {
           console.log('📝 Parol o\'zgardi, hash qilinmoqda...');
-          console.log('📝 Parol (oldin):', user.hashpassword);
           
-          const salt = await bcrypt.genSalt(10);
-          user.hashpassword = await bcrypt.hash(user.hashpassword, salt);
-          console.log('✅ Parol hash qilindi:', user.hashpassword);
-        }
-      },
-      
-      /**
-       * SAVE dan oldin (create va update ikkalasi uchun)
-       */
-      beforeSave: async (user: User) => {
-        console.log('💾 beforeSave hook ishga tushdi');
-        
-        // Agar parol hali ham hash qilinmagan bo'lsa
-        if (user.hashpassword && !user.hashpassword.startsWith('$2b$')) {
-          console.log('⚠️  Parol hali hash qilinmagan! Hozir hash qilinmoqda...');
-          const salt = await bcrypt.genSalt(10);
-          user.hashpassword = await bcrypt.hash(user.hashpassword, salt);
-          console.log('✅ beforeSave da hash qilindi:', user.hashpassword);
+          if (user.hashpassword && !user.hashpassword.startsWith('$2b$')) {
+            const salt = await bcrypt.genSalt(10);
+            user.hashpassword = await bcrypt.hash(user.hashpassword, salt);
+            console.log('✅ Parol hash qilindi');
+          }
         }
       },
     },

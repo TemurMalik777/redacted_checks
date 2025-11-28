@@ -1,114 +1,61 @@
 import { Router } from 'express';
 import userController from './user.controller';
-import { authMiddleware, adminOnly } from '../../middlewares/authMiddleware';
+import { authMiddleware, adminOnly } from '../../middlewares/authMiddleware'; // ✅ TO'G'RI IMPORT
 import { validate } from '../../middlewares/validateMiddleware';
 import { authLimiter } from '../../middlewares/rateLimiterMiddleware';
 import authValidation from '../../middlewares/userValidation';
 
-/**
- * User Routes
- */
 const router = Router();
 
-/**
- * POST /api/auth/register
- * 
- * Ro'yxatdan o'tish
- * - Parol avtomatik hash qilinadi
- * - Access token (15 min) va Refresh token (7 kun) yaratiladi
- * - Refresh token cookie ga saqlanadi
- */
+// ✅ Arrow function bilan wrap qilish
 router.post(
   '/register',
   authLimiter,
   validate(authValidation.register),
-  userController.register
+  (req, res) => userController.register(req, res)
 );
 
-/**
- * POST /api/auth/login
- * 
- * Login qilish
- * - Access token va Refresh token yaratiladi
- * - Refresh token cookie ga saqlanadi
- */
 router.post(
   '/login',
   authLimiter,
   validate(authValidation.login),
-  userController.login
+  (req, res) => userController.login(req, res)
 );
 
-/**
- * POST /api/auth/refresh
- * 
- * Token yangilash
- * - Refresh token cookie dan olinadi
- * - Yangi Access token va Refresh token yaratiladi
- * - Eski Refresh token bekor qilinadi
- */
 router.post(
   '/refresh',
-  userController.refreshToken
+  (req, res) => userController.refreshToken(req, res)
 );
 
-/**
- * POST /api/auth/logout
- * 
- * Logout qilish
- * - Refresh token bekor qilinadi
- * - Cookie o'chiriladi
- */
 router.post(
   '/logout',
-  userController.logout
+  (req, res) => userController.logout(req, res)
 );
 
-/**
- * POST /api/auth/logout-all
- * 
- * Barcha qurilmalardan chiqish
- * - Barcha Refresh tokenlar bekor qilinadi
- */
 router.post(
   '/logout-all',
   authMiddleware,
-  userController.logoutAll
+  (req, res) => userController.logoutAll(req, res)
 );
 
-/**
- * GET /api/auth/me
- * 
- * Hozirgi userni olish
- */
 router.get(
   '/me',
   authMiddleware,
-  userController.getMe
+  (req, res) => userController.getMe(req, res)
 );
 
-/**
- * PUT /api/auth/change-password
- * 
- * Parolni o'zgartirish
- */
 router.put(
   '/change-password',
   authMiddleware,
   validate(authValidation.changePassword),
-  userController.changePassword
+  (req, res) => userController.changePassword(req, res)
 );
 
-/**
- * GET /api/auth/profile/:id
- * 
- * User ID bo'yicha ma'lumot olish (Admin only)
- */
 router.get(
   '/profile/:id',
   authMiddleware,
   adminOnly,
-  userController.getUserById
+  (req, res) => userController.getUserById(req, res)
 );
 
 export default router;

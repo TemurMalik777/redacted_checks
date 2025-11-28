@@ -60,7 +60,7 @@ class AdminService {
     if (!user) throw new Error('User topilmadi');
 
     // beforeUpdate hook avtomatik hash qiladi
-    await user.update({ password: newPassword });
+    await user.update({ hashpassword: newPassword });
     return user;
   }
 

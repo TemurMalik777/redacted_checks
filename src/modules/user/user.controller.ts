@@ -247,7 +247,7 @@ class UserController {
       }
 
       await req.user.update({
-        password: newPassword,
+        hashpassword: newPassword,
       });
 
       res.status(200).json({

@@ -1,9 +1,6 @@
 import { Model, DataTypes, Optional } from 'sequelize';
 import sequelize from '../../config/database';
 
-/**
- * RefreshToken interfeysi
- */
 export interface RefreshTokenAttributes {
   id: number;
   userId: number;
@@ -21,33 +18,25 @@ export interface RefreshTokenAttributes {
 export interface RefreshTokenCreationAttributes 
   extends Optional<RefreshTokenAttributes, 'id' | 'createdByIp' | 'revokedAt' | 'revokedByIp' | 'replacedByToken' | 'isActive' | 'createdAt' | 'updatedAt'> {}
 
-/**
- * RefreshToken Model
- */
 class RefreshToken extends Model<RefreshTokenAttributes, RefreshTokenCreationAttributes> implements RefreshTokenAttributes {
-  public id!: number;
-  public userId!: number;
-  public token!: string;
-  public expiresAt!: Date;
-  public createdByIp?: string;
-  public revokedAt?: Date;
-  public revokedByIp?: string;
-  public replacedByToken?: string;
-  public isActive!: boolean;
+  // ✅ DECLARE ishlatish
+  declare id: number;
+  declare userId: number;
+  declare token: string;
+  declare expiresAt: Date;
+  declare createdByIp?: string;
+  declare revokedAt?: Date;
+  declare revokedByIp?: string;
+  declare replacedByToken?: string;
+  declare isActive: boolean;
   
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
 
-  /**
-   * Token hali faolmi?
-   */
   public isExpired(): boolean {
     return new Date() > this.expiresAt;
   }
 
-  /**
-   * Token bekor qilinganmi?
-   */
   public isRevoked(): boolean {
     return !!this.revokedAt;
   }
@@ -63,7 +52,7 @@ RefreshToken.init(
     userId: {
       type: DataTypes.INTEGER,
       allowNull: false,
-      field: 'user_id', // ✅ DATABASE DA snake_case
+      field: 'user_id',
       references: {
         model: 'users',
         key: 'id',
@@ -111,17 +100,11 @@ RefreshToken.init(
     sequelize,
     tableName: 'refresh_tokens',
     timestamps: true,
-    underscored: true, // ✅ Bu avtomatik camelCase -> snake_case
+    underscored: true,
     indexes: [
-      {
-        fields: ['user_id'],
-      },
-      {
-        fields: ['token'],
-      },
-      {
-        fields: ['expires_at'],
-      },
+      { fields: ['user_id'] },
+      { fields: ['token'] },
+      { fields: ['expires_at'] },
     ],
   }
 );
