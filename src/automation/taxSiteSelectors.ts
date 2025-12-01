@@ -1,12 +1,12 @@
-import { BrowserManager } from '../automation/utils/browserManager';
+import { BrowserManager } from './utils/browserManager';
 import {
   LoginAction,
   LoginCredentials,
-} from '../automation/actions/loginAction';
+} from './actions/loginAction';
 import {
   InvoiceAction,
   InvoiceData,
-} from '../automation/actions/invoiceAction';
+} from './actions/invoiceAction';
 import { Page } from 'playwright';
 
 export class TaxSiteService {

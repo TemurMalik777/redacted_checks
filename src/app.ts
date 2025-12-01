@@ -1,6 +1,6 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
-import cookieParser from 'cookie-parser'; // ✅ YANGI!
+import cookieParser from 'cookie-parser';
 import { config } from './config/env';
 import { connectDatabase, disconnectDatabase } from './config/database';
 import './modules/index';
@@ -8,6 +8,7 @@ import './modules/index';
 // Routes
 import userRoutes from './modules/user/user.routes';
 import adminRoutes from './modules/admin/admin.routes';
+import automationRoutes from './modules/automationRoutes'; // ✅ YANGI
 
 const app: Application = express();
 
@@ -18,10 +19,10 @@ const app: Application = express();
 // 1. CORS
 app.use(cors({
   origin: config.isDevelopment ? '*' : ['http://localhost:3000'],
-  credentials: true, // Cookie uchun kerak!
+  credentials: true,
 }));
 
-// 2. Cookie Parser ✅ YANGI!
+// 2. Cookie Parser
 app.use(cookieParser());
 
 // 3. JSON va URL-encoded
@@ -49,6 +50,7 @@ app.get('/', (req: Request, res: Response) => {
  */
 app.use('/api/auth', userRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/automation', automationRoutes); // ✅ YANGI
 
 /**
  * 404
@@ -91,7 +93,15 @@ const startServer = async () => {
     const fs = require('fs');
     const path = require('path');
 
-    const dirs = ['uploads', 'logs', 'screenshots', 'captchas'];
+    // Kerakli papkalarni yaratish
+    const dirs = [
+      'uploads', 
+      'logs', 
+      'screenshots', 
+      'captchas', 
+      'browser-data' // ✅ YANGI
+    ];
+    
     dirs.forEach(dir => {
       const dirPath = path.join(process.cwd(), dir);
       if (!fs.existsSync(dirPath)) {
@@ -108,6 +118,12 @@ const startServer = async () => {
       console.log(`📍 URL: http://localhost:${config.PORT}`);
       console.log(`🌍 Environment: ${config.NODE_ENV}`);
       console.log(`📅 Vaqt: ${new Date().toLocaleString()}`);
+      console.log('═══════════════════════════════════════════════');
+      console.log('');
+      console.log('📋 Available Routes:');
+      console.log('   🔐 /api/auth/*       - Authentication');
+      console.log('   👨‍💼 /api/admin/*      - Admin panel');
+      console.log('   🤖 /api/automation/* - Browser automation');
       console.log('═══════════════════════════════════════════════');
       console.log('');
     });

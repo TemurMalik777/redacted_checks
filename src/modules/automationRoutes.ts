@@ -1,136 +1,247 @@
 import { Router, Request, Response } from 'express';
-import { TaxSiteService } from '../automation/taxSiteService';
+import { TaxSiteService } from '../automation/taxSiteSelectors';
 import { authMiddleware } from '../middlewares/authMiddleware';
-import { rateLimiterMiddleware } from '../middlewares/rateLimiterMiddleware';
+import { automationLimiter } from '../middlewares/rateLimiterMiddleware';
 
 const router = Router();
 
-// Service instance (singleton)
-let taxService: TaxSiteService | null = null;
+/**
+ * Service instance (singleton pattern)
+ * Har bir session uchun bitta instance
+ */
+const sessions = new Map<string, TaxSiteService>();
 
-// Initialize service
-router.post('/init', authMiddleware, async (req: Request, res: Response) => {
+/**
+ * Helper: Session key yaratish
+ */
+const getSessionKey = (req: Request): string => {
+  return `session_${req.user?.id || 'guest'}`;
+};
+
+/**
+ * Helper: Session olish yoki yaratish
+ */
+const getOrCreateSession = (req: Request): TaxSiteService => {
+  const key = getSessionKey(req);
+  
+  if (!sessions.has(key)) {
+    sessions.set(key, new TaxSiteService());
+  }
+  
+  return sessions.get(key)!;
+};
+
+/**
+ * POST /api/automation/init
+ * 
+ * Browser ni initialize qilish
+ */
+router.post('/init', authMiddleware, automationLimiter, async (req: Request, res: Response) => {
   try {
     const { headless = true } = req.body;
     
-    taxService = new TaxSiteService('user');
-    await taxService.initialize(headless);
+    const service = getOrCreateSession(req);
+    await service.initialize(headless);
 
     res.json({ 
       success: true, 
-      message: 'Browser initialized' 
+      message: 'Browser initialized successfully',
     });
   } catch (error: any) {
     res.status(500).json({ 
-      error: 'Initialization failed', 
-      details: error.message 
+      success: false,
+      message: 'Initialization failed', 
+      error: error.message,
     });
   }
 });
 
-// Login
-router.post('/login', authMiddleware, rateLimiterMiddleware, async (req: Request, res: Response) => {
+/**
+ * POST /api/automation/login
+ * 
+ * Tax site ga login
+ */
+router.post('/login', authMiddleware, automationLimiter, async (req: Request, res: Response) => {
   try {
     const { tin, password, captcha } = req.body;
 
-    if (!taxService) {
-      taxService = new TaxSiteService('user');
-      await taxService.initialize(false);
+    if (!tin || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'TIN va parol kiritilishi shart',
+      });
     }
 
-    const success = await taxService.login({ tin, password, captcha });
+    const service = getOrCreateSession(req);
+    
+    // Agar browser init qilinmagan bo'lsa, avtomatik init qilish
+    const isLoggedIn = await service.isLoggedIn();
+    if (!isLoggedIn) {
+      await service.initialize(false);
+    }
+
+    const success = await service.login({ tin, password, captcha });
 
     res.json({ 
       success, 
-      message: success ? 'Login successful' : 'Login failed' 
+      message: success ? 'Login successful' : 'Login failed',
     });
   } catch (error: any) {
     res.status(500).json({ 
-      error: 'Login error', 
-      details: error.message 
+      success: false,
+      message: 'Login error', 
+      error: error.message,
     });
   }
 });
 
-// Create invoice
-router.post('/create-invoice', authMiddleware, async (req: Request, res: Response) => {
+/**
+ * POST /api/automation/create-invoice
+ * 
+ * Invoice yaratish
+ */
+router.post('/create-invoice', authMiddleware, automationLimiter, async (req: Request, res: Response) => {
   try {
-    if (!taxService) {
-      return res.status(400).json({ 
-        error: 'Service not initialized. Call /init first.' 
+    const service = getOrCreateSession(req);
+    
+    // Login tekshirish
+    const isLoggedIn = await service.isLoggedIn();
+    if (!isLoggedIn) {
+      return res.status(401).json({ 
+        success: false,
+        message: 'Iltimos avval login qiling',
       });
     }
 
     const invoiceData = req.body;
-    const success = await taxService.createInvoice(invoiceData);
+    const success = await service.createInvoice(invoiceData);
 
     res.json({ 
       success,
-      message: success ? 'Invoice created' : 'Invoice creation failed'
+      message: success ? 'Invoice created successfully' : 'Invoice creation failed',
     });
   } catch (error: any) {
     res.status(500).json({ 
-      error: 'Invoice creation error', 
-      details: error.message 
+      success: false,
+      message: 'Invoice creation error', 
+      error: error.message,
     });
   }
 });
 
-// Logout
+/**
+ * POST /api/automation/logout
+ * 
+ * Logout
+ */
 router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
   try {
-    if (taxService) {
-      await taxService.logout();
-    }
+    const service = getOrCreateSession(req);
+    await service.logout();
 
     res.json({ 
       success: true, 
-      message: 'Logged out' 
+      message: 'Logged out successfully',
     });
   } catch (error: any) {
     res.status(500).json({ 
-      error: 'Logout error', 
-      details: error.message 
+      success: false,
+      message: 'Logout error', 
+      error: error.message,
     });
   }
 });
 
-// Close browser
+/**
+ * POST /api/automation/close
+ * 
+ * Browser ni yopish
+ */
 router.post('/close', authMiddleware, async (req: Request, res: Response) => {
   try {
-    if (taxService) {
-      await taxService.close();
-      taxService = null;
+    const key = getSessionKey(req);
+    const service = sessions.get(key);
+    
+    if (service) {
+      await service.close();
+      sessions.delete(key);
     }
 
     res.json({ 
       success: true, 
-      message: 'Browser closed' 
+      message: 'Browser closed successfully',
     });
   } catch (error: any) {
     res.status(500).json({ 
-      error: 'Close error', 
-      details: error.message 
+      success: false,
+      message: 'Close error', 
+      error: error.message,
     });
   }
 });
 
-// Clear session
+/**
+ * POST /api/automation/clear-session
+ * 
+ * Session ni tozalash (cookies, cache)
+ */
 router.post('/clear-session', authMiddleware, async (req: Request, res: Response) => {
   try {
-    if (taxService) {
-      await taxService.clearSession();
-      taxService = null;
+    const key = getSessionKey(req);
+    const service = sessions.get(key);
+    
+    if (service) {
+      await service.clearSession();
+      sessions.delete(key);
     }
 
     res.json({ 
       success: true, 
-      message: 'Session cleared' 
+      message: 'Session cleared successfully',
     });
   } catch (error: any) {
     res.status(500).json({ 
-      error: 'Clear session error', 
-      details: error.message 
+      success: false,
+      message: 'Clear session error', 
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * GET /api/automation/status
+ * 
+ * Hozirgi session statusini ko'rish
+ */
+router.get('/status', authMiddleware, async (req: Request, res: Response) => {
+  try {
+    const key = getSessionKey(req);
+    const service = sessions.get(key);
+    
+    if (!service) {
+      return res.json({
+        success: true,
+        data: {
+          initialized: false,
+          loggedIn: false,
+        },
+      });
+    }
+
+    const isLoggedIn = await service.isLoggedIn();
+
+    res.json({
+      success: true,
+      data: {
+        initialized: true,
+        loggedIn: isLoggedIn,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      message: 'Status check error',
+      error: error.message,
     });
   }
 });
