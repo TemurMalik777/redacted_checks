@@ -3,31 +3,47 @@ import sequelize from '../../config/database';
 
 /**
  * Faktura interfeysi
- * 
+ *
  * Bu jadval Excel dan import qilinadigan fakturalar uchun
  * Fakturalar checks bilan matching qilinadi
  */
 export interface FakturaAttributes {
   id: number;
-  mxik: string;                    // MXIK kodi
-  ulchov: string;                  // O'lchov birligi (dona, kg, litr, ...)
-  fakturaSumma: number;            // Faktura summasi
-  fakturaMiqdor: number;           // Faktura miqdori
-  isActive: boolean;               // Bu faktura ishlatilayaptimi
-  relatedCheckId?: number;         // Qaysi chekka bog'langan (agar matching bo'lsa)
-  importId?: number;               // Qaysi import operatsiyasi
+  uuid: string;
+  creation_data_faktura: string; // Faktra bazadan yartilgan vaqti
+  mxik: string; // MXIK kodi
+  ulchov: string; // O'lchov birligi (dona, kg, litr, ...)
+  fakturaSumma: number; // Faktura summasi
+  fakturaMiqdor: number; // Faktura miqdori
+  isActive: boolean; // Bu faktura ishlatilayaptimi
+  relatedCheckId?: number; // Qaysi chekka bog'langan (agar matching bo'lsa)
+  importId?: number; // Qaysi import operatsiyasi
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-export interface FakturaCreationAttributes 
-  extends Optional<FakturaAttributes, 'id' | 'isActive' | 'relatedCheckId' | 'importId' | 'createdAt' | 'updatedAt'> {}
+export interface FakturaCreationAttributes
+  extends Optional<
+    FakturaAttributes,
+    | 'id'
+    | 'uuid'
+    | 'isActive'
+    | 'relatedCheckId'
+    | 'importId'
+    | 'createdAt'
+    | 'updatedAt'
+  > {}
 
 /**
  * Faktura Model
  */
-class Faktura extends Model<FakturaAttributes, FakturaCreationAttributes> implements FakturaAttributes {
+class Faktura
+  extends Model<FakturaAttributes, FakturaCreationAttributes>
+  implements FakturaAttributes
+{
   public id!: number;
+  public uuid!: string;
+  public creation_data_faktura!: string;
   public mxik!: string;
   public ulchov!: string;
   public fakturaSumma!: number;
@@ -35,7 +51,7 @@ class Faktura extends Model<FakturaAttributes, FakturaCreationAttributes> implem
   public isActive!: boolean;
   public relatedCheckId?: number;
   public importId?: number;
-  
+
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 
@@ -73,6 +89,17 @@ Faktura.init(
       autoIncrement: true,
       primaryKey: true,
     },
+    uuid: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      allowNull: false,
+      unique: true,
+    },
+    creation_data_faktura: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      field: 'creation_data_faktura',
+    },
     mxik: {
       type: DataTypes.STRING(50),
       allowNull: false,
@@ -87,7 +114,7 @@ Faktura.init(
       validate: {
         notEmpty: true,
       },
-      comment: 'O\'lchov birligi: dona, kg, litr, m, m2, m3, ...',
+      comment: "O'lchov birligi: dona, kg, litr, m, m2, m3, ...",
     },
     fakturaSumma: {
       type: DataTypes.DECIMAL(15, 2),
@@ -98,7 +125,7 @@ Faktura.init(
       },
     },
     fakturaMiqdor: {
-      type: DataTypes.DECIMAL(10, 3),  // 3 ta kasr qism - aniqroq o'lchov uchun
+      type: DataTypes.DECIMAL(10, 3), // 3 ta kasr qism - aniqroq o'lchov uchun
       allowNull: false,
       field: 'faktura_miqdor',
       validate: {
@@ -108,9 +135,9 @@ Faktura.init(
     isActive: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
-      defaultValue: true,  // Default - aktiv
+      defaultValue: true, // Default - aktiv
       field: 'is_active',
-      comment: 'False bo\'lsa, bu faktura allaqachon ishlatilgan',
+      comment: "False bo'lsa, bu faktura allaqachon ishlatilgan",
     },
     relatedCheckId: {
       type: DataTypes.INTEGER,
@@ -120,7 +147,7 @@ Faktura.init(
         model: 'checks',
         key: 'id',
       },
-      comment: 'Agar matching qilingan bo\'lsa, qaysi chekka tegishli',
+      comment: "Agar matching qilingan bo'lsa, qaysi chekka tegishli",
     },
     importId: {
       type: DataTypes.INTEGER,
@@ -155,7 +182,7 @@ Faktura.init(
         fields: ['mxik', 'is_active'],
       },
     ],
-  }
+  },
 );
 
 export default Faktura;

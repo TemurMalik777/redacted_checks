@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import invoiceService from './invoiceService';
 import { authMiddleware } from '../../middlewares/authMiddleware';
-import { rateLimiterMiddleware } from '../../middlewares/rateLimiterMiddleware';
+import { generalLimiter } from '../../middlewares/rateLimiterMiddleware';  // ← O'zgardi
 import { CreateInvoiceRequest } from './invoiceTypes';
 
 const router = Router();
@@ -12,7 +12,7 @@ const router = Router();
 router.post(
   '/create',
   authMiddleware,
-  rateLimiterMiddleware,
+  generalLimiter,  // ← O'zgardi
   async (req: Request, res: Response) => {
     try {
       const invoiceRequest: CreateInvoiceRequest = req.body;

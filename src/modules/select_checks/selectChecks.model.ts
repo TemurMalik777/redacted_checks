@@ -3,69 +3,86 @@ import sequelize from '../../config/database';
 
 /**
  * SelectCheck interfeysi
- * 
+ *
  * BU ENG MUHIM JADVAL!
  */
 export interface SelectCheckAttributes {
   id: number;
-  
+  uuid: string;
+
   // Faktura ma'lumotlari
+  creationDataFaktura: string;
   mxik: string;
   ulchov: string;
   fakturaSumma: number;
   fakturaMiqdor: number;
-  
+
   // Check ma'lumotlari
   chekRaqam: string;
   maxsulotNomi: string;
   chekSumma: number;
-  
+
   // Hisoblangan maydonlar
   miqdor: number;
   umumiyChekSumma: number;
   birBirlik: number;
-  
+
   // Status
   isActive: boolean;
   processed: boolean;
   automationStatus?: 'pending' | 'processing' | 'completed' | 'failed';
   errorMessage?: string;
-  
+
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-export interface SelectCheckCreationAttributes 
-  extends Optional<SelectCheckAttributes, 'id' | 'isActive' | 'processed' | 'automationStatus' | 'errorMessage' | 'createdAt' | 'updatedAt'> {}
+export interface SelectCheckCreationAttributes
+  extends Optional<
+    SelectCheckAttributes,
+    | 'id'
+    | 'uuid'
+    | 'isActive'
+    | 'processed'
+    | 'automationStatus'
+    | 'errorMessage'
+    | 'createdAt'
+    | 'updatedAt'
+  > {}
 
 /**
  * SelectCheck Model
  */
-class SelectCheck extends Model<SelectCheckAttributes, SelectCheckCreationAttributes> implements SelectCheckAttributes {
+class SelectCheck
+  extends Model<SelectCheckAttributes, SelectCheckCreationAttributes>
+  implements SelectCheckAttributes
+{
   public id!: number;
-  
+  public uuid!: string;
+
   // Faktura
+  public creationDataFaktura!: string;
   public mxik!: string;
   public ulchov!: string;
   public fakturaSumma!: number;
   public fakturaMiqdor!: number;
-  
+
   // Check
   public chekRaqam!: string;
   public maxsulotNomi!: string;
   public chekSumma!: number;
-  
+
   // Calculated
   public miqdor!: number;
   public umumiyChekSumma!: number;
   public birBirlik!: number;
-  
+
   // Status
   public isActive!: boolean;
   public processed!: boolean;
   public automationStatus?: 'pending' | 'processing' | 'completed' | 'failed';
   public errorMessage?: string;
-  
+
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 
@@ -103,8 +120,20 @@ SelectCheck.init(
       autoIncrement: true,
       primaryKey: true,
     },
-    
+
+    uuid: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      allowNull: false,
+      unique: true,
+    },
+
     // Faktura fields
+    creationDataFaktura: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      field: 'creation_data_faktura',
+    },
     mxik: {
       type: DataTypes.STRING(50),
       allowNull: false,
@@ -135,7 +164,7 @@ SelectCheck.init(
         min: 0,
       },
     },
-    
+
     // Check fields
     chekRaqam: {
       type: DataTypes.STRING(100),
@@ -161,7 +190,7 @@ SelectCheck.init(
         min: 0,
       },
     },
-    
+
     // Calculated fields
     miqdor: {
       type: DataTypes.DECIMAL(10, 3),
@@ -169,7 +198,7 @@ SelectCheck.init(
       validate: {
         min: 0,
       },
-      comment: 'Chek bo\'yicha maxsulot miqdori',
+      comment: "Chek bo'yicha maxsulot miqdori",
     },
     umumiyChekSumma: {
       type: DataTypes.DECIMAL(15, 2),
@@ -187,7 +216,7 @@ SelectCheck.init(
         min: 0,
       },
     },
-    
+
     // Status fields
     isActive: {
       type: DataTypes.BOOLEAN,
@@ -233,18 +262,21 @@ SelectCheck.init(
         fields: ['mxik'],
       },
     ],
-    
+
     hooks: {
       beforeCreate: (selectCheck: SelectCheck) => {
         selectCheck.recalculateBirBirlik();
       },
       beforeUpdate: (selectCheck: SelectCheck) => {
-        if (selectCheck.changed('fakturaSumma') || selectCheck.changed('fakturaMiqdor')) {
+        if (
+          selectCheck.changed('fakturaSumma') ||
+          selectCheck.changed('fakturaMiqdor')
+        ) {
           selectCheck.recalculateBirBirlik();
         }
       },
     },
-  }
+  },
 );
 
 export default SelectCheck;

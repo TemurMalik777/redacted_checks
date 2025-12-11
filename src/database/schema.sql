@@ -12,6 +12,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE IF NOT EXISTS checks (
     id SERIAL PRIMARY KEY,
     uuid UUID DEFAULT uuid_generate_v4() UNIQUE,
+    creation_date_check TIMESTAMP NOT NULL,
     chek_raqam VARCHAR(100) NOT NULL,
     chek_summa DECIMAL(15, 2) NOT NULL,
     maxsulot_nomi TEXT,
@@ -27,6 +28,7 @@ CREATE TABLE IF NOT EXISTS checks (
 CREATE TABLE IF NOT EXISTS faktura (
     id SERIAL PRIMARY KEY,
     uuid UUID DEFAULT uuid_generate_v4() UNIQUE,
+    creation_data_faktura TIMESTAMP NOT NULL,
     mxik VARCHAR(100) NOT NULL,
     ulchov VARCHAR(500) NOT NULL,
     faktura_summa DECIMAL(15, 2) NOT NULL,

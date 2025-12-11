@@ -1,11 +1,12 @@
 import { Model, DataTypes, Optional, Association } from 'sequelize';
-import sequelize from '../config/database';
+import sequelize from '../../config/database';
 
 /**
  * Import interfeysi
  */
 export interface ImportAttributes {
   id: number;
+  uuid: string;
   fileName: string;
   isActive: boolean;
   processed: boolean;
@@ -22,14 +23,32 @@ export interface ImportAttributes {
   updatedAt?: Date;
 }
 
-export interface ImportCreationAttributes 
-  extends Optional<ImportAttributes, 'id' | 'isActive' | 'processed' | 'importedRows' | 'failedRows' | 'status' | 'errorMessage' | 'startedAt' | 'finishedAt' | 'createdAt' | 'updatedAt'> {}
+export interface ImportCreationAttributes
+  extends Optional<
+    ImportAttributes,
+    | 'id'
+    | 'uuid'
+    | 'isActive'
+    | 'processed'
+    | 'importedRows'
+    | 'failedRows'
+    | 'status'
+    | 'errorMessage'
+    | 'startedAt'
+    | 'finishedAt'
+    | 'createdAt'
+    | 'updatedAt'
+  > {}
 
 /**
  * Import Model
  */
-class Import extends Model<ImportAttributes, ImportCreationAttributes> implements ImportAttributes {
+class Import
+  extends Model<ImportAttributes, ImportCreationAttributes>
+  implements ImportAttributes
+{
   public id!: number;
+  public uuid!: string;
   public fileName!: string;
   public isActive!: boolean;
   public processed!: boolean;
@@ -42,7 +61,7 @@ class Import extends Model<ImportAttributes, ImportCreationAttributes> implement
   public importedBy!: number;
   public startedAt?: Date;
   public finishedAt?: Date;
-  
+
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 
@@ -62,7 +81,9 @@ class Import extends Model<ImportAttributes, ImportCreationAttributes> implement
    */
   public getDuration(): number | null {
     if (!this.startedAt || !this.finishedAt) return null;
-    return Math.floor((this.finishedAt.getTime() - this.startedAt.getTime()) / 1000);
+    return Math.floor(
+      (this.finishedAt.getTime() - this.startedAt.getTime()) / 1000,
+    );
   }
 
   /**
@@ -80,6 +101,12 @@ Import.init(
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
+    },
+    uuid: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      allowNull: false,
+      unique: true,
     },
     fileName: {
       type: DataTypes.STRING(255),
@@ -158,7 +185,7 @@ Import.init(
         fields: ['is_active'],
       },
     ],
-  }
+  },
 );
 
 export default Import;

@@ -27,6 +27,7 @@
     "sequelize": "^6.37.7",
     "swagger": "^0.7.5",
     "winston": "^3.18.3",
+    "xlsx": "^0.18.5",
     "zod": "^4.1.12"
   },
   "devDependencies": {

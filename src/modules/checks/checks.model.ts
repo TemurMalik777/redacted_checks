@@ -9,6 +9,8 @@ import sequelize from '../../config/database';
  */
 export interface CheckAttributes {
   id: number;
+  uuid: string
+  creation_date_check: string; // Chek bazada yartilgan vaqti
   chekRaqam: string;          // Chek raqami - UNIQUE
   chekSumma: number;          // Chek summasi (decimal)
   maxsulotNomi: string;       // Maxsulot nomi
@@ -21,13 +23,15 @@ export interface CheckAttributes {
 }
 
 export interface CheckCreationAttributes 
-  extends Optional<CheckAttributes, 'id' | 'processed' | 'source' | 'importId' | 'createdAt' | 'updatedAt'> {}
+  extends Optional<CheckAttributes, 'id' | 'uuid' | 'processed' | 'source' | 'importId' | 'createdAt' | 'updatedAt'> {}
 
 /**
  * Check Model
  */
 class Check extends Model<CheckAttributes, CheckCreationAttributes> implements CheckAttributes {
   public id!: number;
+  public uuid!: string;
+  public creation_date_check!: string;
   public chekRaqam!: string;
   public chekSumma!: number;
   public maxsulotNomi!: string;
@@ -57,6 +61,17 @@ Check.init(
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true,
+    },
+    uuid: {
+      type: DataTypes.UUID,
+      defaultValue: DataTypes.UUIDV4,
+      allowNull: false,
+      unique: true,
+    },
+    creation_date_check: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      field: 'creation_date_check',
     },
     chekRaqam: {
       type: DataTypes.STRING(100),

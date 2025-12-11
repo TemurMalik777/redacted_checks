@@ -7,12 +7,14 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export interface CheckData {
+  creation_data_check: string;
   chek_raqam: string;
   chek_summa: number;
   maxsulot_nomi?: string;
 }
 
 export interface FakturaData {
+  creation_data_faktura: string;
   mxik: string;
   ulchov: string;
   faktura_summa: number;

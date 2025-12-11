@@ -1,5 +1,6 @@
-import { DbManager, SelectCheckData } from './dbManager';
+import { DbManager, SelectCheckData } from './checkImporter';
 import { logger } from '../automation/utils/logUtils';
+import { IncomingMessage } from 'http';
 
 export interface InvoiceItem {
   mxik: string;
@@ -82,6 +83,162 @@ export class InvoiceManager {
   }
 
   /**
+   * Faktura summasiga mos cheklarni topish va yig'ish
+   * 3 xil usulda qidiradi:
+   * 1. faktura_summa == chek_summa (bitta chek to'liq mos)
+   * 2. faktura_summa == umumiy_chek_summa (bir necha chek summasi to'liq teng)
+   * 3. faktura_summa == umumiy_chek_summa (+0.1% dan 1% gacha farq)
+   */
+  async findMatchingChecksForFaktura(faktura: any): Promise<any[]> {
+    const fakturaSumma = parseFloat(faktura.faktura_summa);
+    const mxik = faktura.mxik;
+
+    // 1. Bitta chek to'liq mos kelishi
+    const exactMatch = await this.dbManager.query(
+      `
+            SELECT * FROM checks 
+            WHERE processed = false 
+            AND ABS(chek_summa - $1) < 0.01
+            ORDER BY created_at ASC
+            LIMIT 1
+        `,
+      [fakturaSumma],
+    );
+
+    if (exactMatch.rows.length > 0) {
+      logger.info(
+        `✅ Bitta chek to'liq mos keldi: ${exactMatch.rows[0].chek_raqam}`,
+      );
+      return exactMatch.rows;
+    }
+
+    // 2. Bir necha chekni yig'ish (to'liq teng)
+    const allChecks = await this.dbManager.query(
+      `
+            SELECT * FROM checks 
+            WHERE processed = false 
+            ORDER BY created_at ASC
+        `,
+    );
+
+    const checks = allChecks.rows;
+    const matchingChecks = this.findCheckCombination(
+      checks,
+      fakturaSumma,
+      0.01,
+    );
+
+    if (matchingChecks.length > 0) {
+      const totalSum = matchingChecks.reduce(
+        (sum, check) => sum + parseFloat(check.chek_summa),
+        0,
+      );
+      logger.info(
+        `✅ ${
+          matchingChecks.length
+        } ta chek yig'indisi mos keldi: ${totalSum.toFixed(
+          2,
+        )} ≈ ${fakturaSumma}`,
+      );
+      return matchingChecks;
+    }
+
+    // 3. Bir necha chekni yig'ish (+0.1% dan 1% gacha farq)
+    const tolerantChecks = this.findCheckCombination(
+      checks,
+      fakturaSumma,
+      fakturaSumma * 0.01, // 1% tolerance
+      fakturaSumma * 0.001, // 0.1% minimum
+    );
+
+    if (tolerantChecks.length > 0) {
+      const totalSum = tolerantChecks.reduce(
+        (sum, check) => sum + parseFloat(check.chek_summa),
+        0,
+      );
+      const difference = totalSum - fakturaSumma;
+      const percentage = ((difference / fakturaSumma) * 100).toFixed(2);
+
+      logger.info(
+        `✅ ${
+          tolerantChecks.length
+        } ta chek yig'indisi mos keldi (${percentage}% farq): ${totalSum.toFixed(
+          2,
+        )} ≈ ${fakturaSumma}`,
+      );
+      return tolerantChecks;
+    }
+
+    logger.warning(`⚠️ Faktura uchun mos cheklar topilmadi: ${fakturaSumma}`);
+    return [];
+  }
+
+  /**
+   * Cheklar kombinatsiyasini topish (greedy algorithm)
+   * Target summaga yaqin bo'lgan cheklar to'plamini qaytaradi
+   */
+  private findCheckCombination(
+    checks: any[],
+    targetSum: number,
+    maxTolerance: number,
+    minTolerance: number = 0,
+  ): any[] {
+    // Cheklarni summaga ko'ra sortirlash (katta -> kichik)
+    const sortedChecks = [...checks].sort(
+      (a, b) => parseFloat(b.chek_summa) - parseFloat(a.chek_summa),
+    );
+
+    // Greedy yondashuv: eng yaqin kombinatsiyani topish
+    let bestCombination: any[] = [];
+    let bestDifference = Infinity;
+
+    // Recursive backtracking bilan barcha kombinatsiyalarni sinab ko'rish
+    const findCombination = (
+      index: number,
+      currentCombination: any[],
+      currentSum: number,
+    ) => {
+      const difference = Math.abs(currentSum - targetSum);
+
+      // Agar tolerance ichida bo'lsa va minTolerance dan katta bo'lsa
+      if (
+        difference <= maxTolerance &&
+        difference >= minTolerance &&
+        currentSum >= targetSum
+      ) {
+        if (difference < bestDifference) {
+          bestDifference = difference;
+          bestCombination = [...currentCombination];
+        }
+      }
+
+      // Agar target summadan juda katta bo'lsa, to'xtatamiz
+      if (currentSum > targetSum + maxTolerance) {
+        return;
+      }
+
+      // Barcha qolgan cheklarni sinab ko'ramiz
+      for (let i = index; i < sortedChecks.length; i++) {
+        const check = sortedChecks[i];
+        const checkSum = parseFloat(check.chek_summa);
+
+        // Agar qo'shsak target dan oshib ketsa, kichikroq cheklarni sinab ko'ramiz
+        if (currentSum + checkSum <= targetSum + maxTolerance) {
+          findCombination(
+            i + 1,
+            [...currentCombination, check],
+            currentSum + checkSum,
+          );
+        }
+      }
+    };
+
+    findCombination(0, [], 0);
+
+    return bestCombination;
+  }
+
+  /**
    * Chek summasiga mos faktura topish
    */
   async findMatchingFaktura(
@@ -152,8 +309,8 @@ export class InvoiceManager {
    */
   async getActiveSelectChecks(): Promise<any[]> {
     const result = await this.dbManager.query(`
-            SELECT * FROM select_checks 
-            WHERE is_active = true 
+            SELECT * FROM select_checks
+            WHERE is_active = true
             ORDER BY created_at ASC
         `);
 
@@ -213,6 +370,91 @@ export class InvoiceManager {
     );
 
     return result.rows;
+  }
+
+  /**
+   * Faktura uchun invoice yaratish (bir necha chek bilan)
+   */
+  async processFakturaWithMultipleChecks(fakturaId: number): Promise<void> {
+    try {
+      // Fakturani olish
+      const fakturaResult = await this.dbManager.query(
+        `
+                SELECT * FROM faktura 
+                WHERE id = $1 AND is_active = true 
+                LIMIT 1
+            `,
+        [fakturaId],
+      );
+
+      if (fakturaResult.rows.length === 0) {
+        throw new Error(`Faktura topilmadi: ${fakturaId}`);
+      }
+
+      const faktura = fakturaResult.rows[0];
+
+      // Mos cheklarni topish
+      const matchingChecks = await this.findMatchingChecksForFaktura(faktura);
+
+      if (matchingChecks.length === 0) {
+        throw new Error(
+          `Faktura uchun mos cheklar topilmadi: ${faktura.faktura_summa}`,
+        );
+      }
+
+      // Umumiy chek summasi
+      const umumiyChekSumma = matchingChecks.reduce(
+        (sum, check) => sum + parseFloat(check.chek_summa),
+        0,
+      );
+
+      const fakturaSumma = parseFloat(faktura.faktura_summa);
+      const fakturaMiqdor = parseFloat(faktura.faktura_miqdor);
+      const birBirlik = fakturaSumma / fakturaMiqdor;
+
+      // Har bir chek uchun invoice item yaratish
+      const items: InvoiceItem[] = [];
+
+      for (const check of matchingChecks) {
+        const chekSumma = parseFloat(check.chek_summa);
+        const miqdor = chekSumma / birBirlik;
+
+        const item: InvoiceItem = {
+          mxik: faktura.mxik,
+          ulchov: faktura.ulchov,
+          faktura_summa: fakturaSumma,
+          faktura_miqdor: fakturaMiqdor,
+          chek_raqam: check.chek_raqam,
+          maxsulot_nomi: check.maxsulot_nomi,
+          chek_summa: chekSumma,
+          miqdor: miqdor,
+          umumiy_chek_summa: umumiyChekSumma,
+          bir_birlik: birBirlik,
+        };
+
+        await this.createInvoiceItem(item);
+        await this.markCheckAsProcessed(check.chek_raqam);
+        items.push(item);
+      }
+
+      logger.info('\n' + '='.repeat(70));
+      logger.info('✅ FAKTURA PROCESSED:');
+      logger.info('='.repeat(70));
+      logger.info(`   Faktura ID: ${fakturaId}`);
+      logger.info(`   Faktura summa: ${fakturaSumma}`);
+      logger.info(`   Cheklar soni: ${matchingChecks.length}`);
+      logger.info(`   Umumiy chek summa: ${umumiyChekSumma.toFixed(2)}`);
+      logger.info(
+        `   Farq: ${(umumiyChekSumma - fakturaSumma).toFixed(2)} (${(
+          ((umumiyChekSumma - fakturaSumma) / fakturaSumma) *
+          100
+        ).toFixed(2)}%)`,
+      );
+      logger.info('='.repeat(70) + '\n');
+    } catch (error) {
+      logger.error(`❌ Faktura processing xatosi (${fakturaId}):`, error);
+      throw error;
+    }
   }
 
   /**
@@ -280,6 +522,41 @@ export class InvoiceManager {
   }
 
   /**
+   * Barcha active fakturalar uchun invoice yaratish
+   */
+  async processAllActiveFakturas(): Promise<void> {
+    try {
+      const fakturas = await this.getActiveFakturas();
+      logger.info(`📋 ${fakturas.length} ta active faktura topildi`);
+
+      let processed = 0;
+      let failed = 0;
+
+      for (const faktura of fakturas) {
+        try {
+          await this.processFakturaWithMultipleChecks(faktura.id);
+          processed++;
+        } catch (error) {
+          failed++;
+          logger.warning(
+            `⚠️ Fakturani process qilib bo'lmadi: ${faktura.faktura_summa}`,
+          );
+        }
+      }
+
+      logger.info('\n' + '='.repeat(70));
+      logger.info('📊 PROCESSING NATIJALARI:');
+      logger.info('='.repeat(70));
+      logger.info(`   ✅ Muvaffaqiyatli: ${processed}`);
+      logger.info(`   ❌ Xato: ${failed}`);
+      logger.info('='.repeat(70) + '\n');
+    } catch (error) {
+      logger.error('❌ Batch processing xatosi:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Barcha unprocessed cheklar uchun invoice yaratish
    */
   async processAllUnprocessedChecks(): Promise<void> {
@@ -314,3 +591,5 @@ export class InvoiceManager {
     }
   }
 }
+
+export default IncomingMessage;
