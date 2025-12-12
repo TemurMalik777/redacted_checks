@@ -32,9 +32,56 @@ const getOrCreateSession = (req: Request): TaxSiteService => {
 };
 
 /**
- * POST /api/automation/init
- * 
- * Browser ni initialize qilish
+ * @swagger
+ * /api/automation/init:
+ *   post:
+ *     summary: Browser ni initialize qilish
+ *     description: Playwright browser ni ishga tushirish
+ *     tags: [Automation]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               headless:
+ *                 type: boolean
+ *                 default: true
+ *                 description: Browser headless rejimida ishlasinmi
+ *     responses:
+ *       200:
+ *         description: Browser muvaffaqiyatli ishga tushdi
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Browser initialized successfully
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         description: Browser ishga tushirishda xato
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Initialization failed
+ *                 error:
+ *                   type: string
+ *                   example: Browser launch error
  */
 router.post('/init', authMiddleware, automationLimiter, async (req: Request, res: Response) => {
   try {
@@ -57,9 +104,81 @@ router.post('/init', authMiddleware, automationLimiter, async (req: Request, res
 });
 
 /**
- * POST /api/automation/login
- * 
- * Tax site ga login
+ * @swagger
+ * /api/automation/login:
+ *   post:
+ *     summary: Tax site ga login
+ *     description: my3.soliq.uz ga TIN va parol bilan kirish
+ *     tags: [Automation]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - tin
+ *               - password
+ *             properties:
+ *               tin:
+ *                 type: string
+ *                 description: Soliq to'lovchining INN raqami
+ *                 example: '123456789'
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 description: Parol
+ *                 example: 'password123'
+ *               captcha:
+ *                 type: string
+ *                 description: CAPTCHA kodi (agar kerak bo'lsa)
+ *                 example: 'AB12CD'
+ *     responses:
+ *       200:
+ *         description: Login jarayoni yakunlandi
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Login successful
+ *       400:
+ *         description: TIN yoki parol kiritilmagan
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: TIN va parol kiritilishi shart
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         description: Login xatosi
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Login error
+ *                 error:
+ *                   type: string
  */
 router.post('/login', authMiddleware, automationLimiter, async (req: Request, res: Response) => {
   try {
@@ -96,9 +215,92 @@ router.post('/login', authMiddleware, automationLimiter, async (req: Request, re
 });
 
 /**
- * POST /api/automation/create-invoice
- * 
- * Invoice yaratish
+ * @swagger
+ * /api/automation/create-invoice:
+ *   post:
+ *     summary: Invoice yaratish
+ *     description: Tax siteda yangi invoice (faktura) yaratish
+ *     tags: [Automation]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - nomer
+ *               - sana
+ *               - mxik
+ *               - tovar_nomi
+ *               - miqdori
+ *               - narxi
+ *             properties:
+ *               nomer:
+ *                 type: string
+ *                 example: FAK-001
+ *               sana:
+ *                 type: string
+ *                 format: date
+ *                 example: '2024-12-11'
+ *               mxik:
+ *                 type: string
+ *                 example: '12345678'
+ *               tovar_nomi:
+ *                 type: string
+ *                 example: Dori vositalari
+ *               olchov_birligi:
+ *                 type: string
+ *                 example: dona
+ *               miqdori:
+ *                 type: number
+ *                 example: 100
+ *               narxi:
+ *                 type: number
+ *                 example: 50000
+ *     responses:
+ *       200:
+ *         description: Invoice yaratish jarayoni yakunlandi
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Invoice created successfully
+ *       401:
+ *         description: Login qilinmagan
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Iltimos avval login qiling
+ *       500:
+ *         description: Invoice yaratishda xato
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Invoice creation error
+ *                 error:
+ *                   type: string
  */
 router.post('/create-invoice', authMiddleware, automationLimiter, async (req: Request, res: Response) => {
   try {
@@ -130,9 +332,45 @@ router.post('/create-invoice', authMiddleware, automationLimiter, async (req: Re
 });
 
 /**
- * POST /api/automation/logout
- * 
- * Logout
+ * @swagger
+ * /api/automation/logout:
+ *   post:
+ *     summary: Logout
+ *     description: Tax sitedan chiqish
+ *     tags: [Automation]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Muvaffaqiyatli logout
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Logged out successfully
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         description: Logout xatosi
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Logout error
+ *                 error:
+ *                   type: string
  */
 router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
   try {
@@ -153,9 +391,45 @@ router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/automation/close
- * 
- * Browser ni yopish
+ * @swagger
+ * /api/automation/close:
+ *   post:
+ *     summary: Browser ni yopish
+ *     description: Playwright browser ni to'liq yopish va sessionni tozalash
+ *     tags: [Automation]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Browser muvaffaqiyatli yopildi
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Browser closed successfully
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         description: Browser yopishda xato
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Close error
+ *                 error:
+ *                   type: string
  */
 router.post('/close', authMiddleware, async (req: Request, res: Response) => {
   try {
@@ -181,9 +455,45 @@ router.post('/close', authMiddleware, async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/automation/clear-session
- * 
- * Session ni tozalash (cookies, cache)
+ * @swagger
+ * /api/automation/clear-session:
+ *   post:
+ *     summary: Session ni tozalash
+ *     description: Browser cookies va cache ni tozalash
+ *     tags: [Automation]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Session muvaffaqiyatli tozalandi
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: Session cleared successfully
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         description: Session tozalashda xato
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Clear session error
+ *                 error:
+ *                   type: string
  */
 router.post('/clear-session', authMiddleware, async (req: Request, res: Response) => {
   try {
@@ -209,9 +519,53 @@ router.post('/clear-session', authMiddleware, async (req: Request, res: Response
 });
 
 /**
- * GET /api/automation/status
- * 
- * Hozirgi session statusini ko'rish
+ * @swagger
+ * /api/automation/status:
+ *   get:
+ *     summary: Hozirgi session statusini ko'rish
+ *     description: Browser va login holatini tekshirish
+ *     tags: [Automation]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Status muvaffaqiyatli olindi
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     initialized:
+ *                       type: boolean
+ *                       example: true
+ *                       description: Browser ishga tushganmi
+ *                     loggedIn:
+ *                       type: boolean
+ *                       example: true
+ *                       description: Tax sitega login qilinganmi
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         description: Status tekshirishda xato
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: false
+ *                 message:
+ *                   type: string
+ *                   example: Status check error
+ *                 error:
+ *                   type: string
  */
 router.get('/status', authMiddleware, async (req: Request, res: Response) => {
   try {

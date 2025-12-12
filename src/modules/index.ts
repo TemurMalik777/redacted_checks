@@ -3,7 +3,7 @@
  */
 
 import User from './user/user.model';
-import Import from './import/import';
+import Import from './import/import.model';
 import Check from './checks/checks.model';
 import Faktura from './faktura/faktura.model';
 import SelectCheck from './select_checks/selectChecks.model';

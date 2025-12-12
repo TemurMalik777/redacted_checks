@@ -1,14 +1,16 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import swaggerUi from 'swagger-ui-express';
 import { config } from './config/env';
 import { connectDatabase, disconnectDatabase } from './config/database';
+import { swaggerSpec } from './config/swagger.config';
 import './modules/index';
 
 // Routes
 import userRoutes from './modules/user/user.routes';
 import adminRoutes from './modules/admin/admin.routes';
-import automationRoutes from './modules/automationRoutes'; // ✅ YANGI
+import automationRoutes from './modules/automationRoutes';
 
 const app: Application = express();
 
@@ -17,10 +19,12 @@ const app: Application = express();
  */
 
 // 1. CORS
-app.use(cors({
-  origin: config.isDevelopment ? '*' : ['http://localhost:3000'],
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: config.isDevelopment ? '*' : ['http://localhost:3000'],
+    credentials: true,
+  }),
+);
 
 // 2. Cookie Parser
 app.use(cookieParser());
@@ -33,6 +37,35 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use('/uploads', express.static('uploads'));
 
 /**
+ * Swagger UI ✅ YANGI
+ */
+app.use(
+  '/api-docs',
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'Check Automation API Docs',
+    swaggerOptions: {
+      persistAuthorization: true,
+      displayRequestDuration: true,
+      filter: true,
+      syntaxHighlight: {
+        activate: true,
+        theme: 'monokai',
+      },
+    },
+  }),
+);
+
+/**
+ * Swagger JSON endpoint ✅ YANGI
+ */
+app.get('/api-docs.json', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.send(swaggerSpec);
+});
+
+/**
  * Health check
  */
 app.get('/', (req: Request, res: Response) => {
@@ -42,6 +75,7 @@ app.get('/', (req: Request, res: Response) => {
     version: '1.0.0',
     timestamp: new Date().toISOString(),
     environment: config.NODE_ENV,
+    docs: `http://localhost:${config.PORT}/api-docs`,
   });
 });
 
@@ -50,7 +84,7 @@ app.get('/', (req: Request, res: Response) => {
  */
 app.use('/api/auth', userRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/api/automation', automationRoutes); // ✅ YANGI
+app.use('/api/automation', automationRoutes);
 
 /**
  * 404
@@ -70,18 +104,20 @@ interface ErrorWithStatus extends Error {
   status?: string;
 }
 
-app.use((err: ErrorWithStatus, req: Request, res: Response, next: NextFunction) => {
-  console.error('❌ Server xatosi:', err);
+app.use(
+  (err: ErrorWithStatus, req: Request, res: Response, next: NextFunction) => {
+    console.error('❌ Server xatosi:', err);
 
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Serverda ichki xato';
+    const statusCode = err.statusCode || 500;
+    const message = err.message || 'Serverda ichki xato';
 
-  res.status(statusCode).json({
-    success: false,
-    message,
-    ...(config.isDevelopment && { stack: err.stack }),
-  });
-});
+    res.status(statusCode).json({
+      success: false,
+      message,
+      ...(config.isDevelopment && { stack: err.stack }),
+    });
+  },
+);
 
 /**
  * Server start
@@ -94,15 +130,9 @@ const startServer = async () => {
     const path = require('path');
 
     // Kerakli papkalarni yaratish
-    const dirs = [
-      'uploads', 
-      'logs', 
-      'screenshots', 
-      'captchas', 
-      'browser-data' // ✅ YANGI
-    ];
-    
-    dirs.forEach(dir => {
+    const dirs = ['uploads', 'logs', 'screenshots', 'captchas', 'browser-data'];
+
+    dirs.forEach((dir) => {
       const dirPath = path.join(process.cwd(), dir);
       if (!fs.existsSync(dirPath)) {
         fs.mkdirSync(dirPath, { recursive: true });
@@ -116,6 +146,7 @@ const startServer = async () => {
       console.log('🚀 Server muvaffaqiyatli ishga tushdi!');
       console.log('═══════════════════════════════════════════════');
       console.log(`📍 URL: http://localhost:${config.PORT}`);
+      console.log(`📚 API Docs: http://localhost:${config.PORT}/api-docs`);
       console.log(`🌍 Environment: ${config.NODE_ENV}`);
       console.log(`📅 Vaqt: ${new Date().toLocaleString()}`);
       console.log('═══════════════════════════════════════════════');
@@ -124,6 +155,7 @@ const startServer = async () => {
       console.log('   🔐 /api/auth/*       - Authentication');
       console.log('   👨‍💼 /api/admin/*      - Admin panel');
       console.log('   🤖 /api/automation/* - Browser automation');
+      console.log('   📖 /api-docs         - Swagger documentation');
       console.log('═══════════════════════════════════════════════');
       console.log('');
     });
@@ -141,10 +173,10 @@ const gracefulShutdown = async (signal: string) => {
 
   try {
     await disconnectDatabase();
-    console.log('✅ Server to\'g\'ri to\'xtatildi');
+    console.log("✅ Server to'g'ri to'xtatildi");
     process.exit(0);
   } catch (error) {
-    console.error('❌ Server to\'xtatishda xato:', error);
+    console.error("❌ Server to'xtatishda xato:", error);
     process.exit(1);
   }
 };
