@@ -15,7 +15,7 @@ export interface ImportAttributes {
   importedRows: number;
   failedRows: number;
   status: 'pending' | 'processing' | 'completed' | 'failed';
-  errorMessage?: string;
+  errorMessage?: string | null;
   importedBy: number;
   startedAt?: Date;
   finishedAt?: Date;

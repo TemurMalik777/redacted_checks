@@ -12,13 +12,13 @@ export interface SelectCheckAttributes {
 
   // Faktura ma'lumotlari
   creationDataFaktura: string;
-  mxik: string;
+  mxik?: string | null;
   ulchov: string;
   fakturaSumma: number;
   fakturaMiqdor: number;
 
   // Check ma'lumotlari
-  chekRaqam: string;
+  chekRaqam?: string | null;
   maxsulotNomi: string;
   chekSumma: number;
 
@@ -31,7 +31,7 @@ export interface SelectCheckAttributes {
   isActive: boolean;
   processed: boolean;
   automationStatus?: 'pending' | 'processing' | 'completed' | 'failed';
-  errorMessage?: string;
+  errorMessage?: string | null;
 
   createdAt?: Date;
   updatedAt?: Date;
