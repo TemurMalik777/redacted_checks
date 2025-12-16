@@ -7,8 +7,19 @@ import { Request, Response } from 'express';
 
 const router = Router();
 
-// Barcha admin routelar himoyalangan
+/**
+ * Barcha admin routelar himoyalangan
+ * authMiddleware - JWT token tekshiradi
+ * adminOnly - Faqat admin role'ga ruxsat beradi
+ * adminLimiter - Rate limiting qo'shadi
+ */
 router.use(authMiddleware, adminOnly, adminLimiter);
+
+/**
+ * ========================================
+ * DASHBOARD ROUTES
+ * ========================================
+ */
 
 /**
  * @swagger
@@ -22,16 +33,6 @@ router.use(authMiddleware, adminOnly, adminLimiter);
  *     responses:
  *       200:
  *         description: Statistika muvaffaqiyatli olindi
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   $ref: '#/components/schemas/DashboardStats'
  *       401:
  *         $ref: '#/components/responses/UnauthorizedError'
  *       403:
@@ -40,6 +41,12 @@ router.use(authMiddleware, adminOnly, adminLimiter);
  *         $ref: '#/components/responses/ServerError'
  */
 router.get('/dashboard/stats', adminController.getDashboardStats);
+
+/**
+ * ========================================
+ * USER MANAGEMENT ROUTES
+ * ========================================
+ */
 
 /**
  * @swagger
@@ -77,23 +84,6 @@ router.get('/dashboard/stats', adminController.getDashboardStats);
  *     responses:
  *       200:
  *         description: Userlar ro'yxati muvaffaqiyatli olindi
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     users:
- *                       type: array
- *                       items:
- *                         $ref: '#/components/schemas/User'
- *                     pagination:
- *                       $ref: '#/components/schemas/Pagination'
  *       401:
  *         $ref: '#/components/responses/UnauthorizedError'
  *       403:
@@ -147,22 +137,6 @@ router.get('/users', adminController.getAllUsers);
  *     responses:
  *       200:
  *         description: User muvaffaqiyatli tahrirlandi
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: User muvaffaqiyatli tahrirlandi
- *                 data:
- *                   type: object
- *                   properties:
- *                     user:
- *                       $ref: '#/components/schemas/User'
  *       404:
  *         $ref: '#/components/responses/NotFoundError'
  *       401:
@@ -193,23 +167,8 @@ router.put('/users/:id', adminController.updateUser);
  *     responses:
  *       200:
  *         description: User muvaffaqiyatli o'chirildi
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: User muvaffaqiyatli o'chirildi
  *       400:
  *         description: O'zini o'chira olmaysiz
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Error'
  *       404:
  *         $ref: '#/components/responses/NotFoundError'
  *       401:
@@ -220,6 +179,12 @@ router.put('/users/:id', adminController.updateUser);
  *         $ref: '#/components/responses/ServerError'
  */
 router.delete('/users/:id', adminController.deleteUser);
+
+/**
+ * ========================================
+ * IMPORT MANAGEMENT ROUTES
+ * ========================================
+ */
 
 /**
  * @swagger
@@ -252,23 +217,6 @@ router.delete('/users/:id', adminController.deleteUser);
  *     responses:
  *       200:
  *         description: Importlar ro'yxati muvaffaqiyatli olindi
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     imports:
- *                       type: array
- *                       items:
- *                         $ref: '#/components/schemas/Import'
- *                     pagination:
- *                       $ref: '#/components/schemas/Pagination'
  *       401:
  *         $ref: '#/components/responses/UnauthorizedError'
  *       403:
@@ -297,30 +245,6 @@ router.get('/imports', adminController.getAllImports);
  *     responses:
  *       200:
  *         description: Import ma'lumotlari muvaffaqiyatli olindi
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     import:
- *                       allOf:
- *                         - $ref: '#/components/schemas/Import'
- *                         - type: object
- *                           properties:
- *                             checks:
- *                               type: array
- *                               items:
- *                                 $ref: '#/components/schemas/Check'
- *                             fakturas:
- *                               type: array
- *                               items:
- *                                 $ref: '#/components/schemas/Faktura'
  *       404:
  *         $ref: '#/components/responses/NotFoundError'
  *       401:
@@ -380,8 +304,6 @@ router.get('/imports/:id', adminController.getImportDetails);
  *                   properties:
  *                     user:
  *                       $ref: '#/components/schemas/User'
- *       400:
- *         $ref: '#/components/responses/ValidationError'
  *       404:
  *         $ref: '#/components/responses/NotFoundError'
  *       401:
@@ -430,7 +352,7 @@ router.put('/users/:id/role', async (req: Request, res: Response) => {
  *     description: User roleni admin ga o'zgartirish
  *     tags: [Admin]
  *     security:
- *       - BearerAuth: []
+ *      - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -495,7 +417,7 @@ router.post('/users/:id/make-admin', async (req: Request, res: Response) => {
  *     description: Admin roleni olib tashlash va userni oddiy user qilish
  *     tags: [Admin]
  *     security:
- *       - BearerAuth: []
+ *      - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -560,7 +482,7 @@ router.post('/users/:id/remove-admin', async (req: Request, res: Response) => {
  *     description: Userni bloklash (isActive = false)
  *     tags: [Admin]
  *     security:
- *       - BearerAuth: []
+ *      - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -625,7 +547,7 @@ router.post('/users/:id/block', async (req: Request, res: Response) => {
  *     description: Bloklangan userni aktivlashtirish (isActive = true)
  *     tags: [Admin]
  *     security:
- *       - BearerAuth: []
+ *      - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -690,7 +612,7 @@ router.post('/users/:id/unblock', async (req: Request, res: Response) => {
  *     description: Tizimda mavjud barcha adminlar ro'yxatini qaytaradi
  *     tags: [Admin]
  *     security:
- *       - BearerAuth: []
+ *      - BearerAuth: []
  *     responses:
  *       200:
  *         description: Adminlar ro'yxati muvaffaqiyatli olindi
@@ -726,7 +648,7 @@ router.get('/admins', async (req: Request, res: Response) => {
     res.status(200).json({
       success: true,
       data: {
-        admins: admins.map(a => a.toJSON()),
+        admins: admins.map((a) => a.toJSON()),
         total: admins.length,
       },
     });

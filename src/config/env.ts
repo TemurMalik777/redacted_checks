@@ -23,11 +23,11 @@ export const config = {
 
   // JWT - Access Token
   JWT_SECRET: process.env.JWT_SECRET || process.env.ACCESS_TOKEN_SECRET || 'super_secret_change_this',
-  JWT_EXPIRE: (process.env.JWT_EXPIRES_IN || process.env.ACCESS_TOKEN_EXPIRES_IN || '15m') as StringValue,
+  JWT_EXPIRE: (process.env.JWT_EXPIRES_IN || process.env.ACCESS_TOKEN_EXPIRES_IN || '1d') as StringValue,
 
   // Access Token
   ACCESS_TOKEN_SECRET: process.env.ACCESS_TOKEN_SECRET || process.env.JWT_SECRET || 'access_token_secret_change_this',
-  ACCESS_TOKEN_EXPIRES_IN: (process.env.ACCESS_TOKEN_EXPIRES_IN || '15m') as StringValue,
+  ACCESS_TOKEN_EXPIRES_IN: (process.env.ACCESS_TOKEN_EXPIRES_IN || '1d') as StringValue,
 
   // Refresh Token
   REFRESH_TOKEN_SECRET: process.env.REFRESH_TOKEN_SECRET || 'refresh_token_secret_change_this',

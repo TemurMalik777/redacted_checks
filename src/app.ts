@@ -7,6 +7,7 @@ import { connectDatabase, disconnectDatabase } from './config/database';
 import { swaggerSpec } from './config/swagger.config';
 import './modules/index';
 
+
 // Routes
 import userRoutes from './modules/user/user.routes';
 import adminRoutes from './modules/admin/admin.routes';
@@ -18,13 +19,13 @@ const app: Application = express();
  * Middleware'lar
  */
 
-// 1. CORS
 app.use(
   cors({
-    origin: config.isDevelopment ? '*' : ['http://localhost:3000'],
+    origin: 'http://localhost:3001',
     credentials: true,
   }),
 );
+
 
 // 2. Cookie Parser
 app.use(cookieParser());
@@ -52,6 +53,12 @@ app.use(
       syntaxHighlight: {
         activate: true,
         theme: 'monokai',
+      },
+      // ✅ BU MUHIM - Authorization headerni majburiy qo'shish
+      requestInterceptor: (req: any) => {
+        console.log('📤 Swagger request:', req.url);
+        console.log('📤 Headers:', req.headers);
+        return req;
       },
     },
   }),

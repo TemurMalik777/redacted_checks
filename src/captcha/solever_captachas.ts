@@ -1,10 +1,10 @@
 // src/captcha/solver_captchas.ts
 
 import axios from 'axios';
-import { WebDriver, By, until } from 'selenium-webdriver';
+import { Page } from 'playwright';
 
 const API_KEY = process.env.CAPTCHA_SOLVER_API_KEY || process.env.API_KEY;
-const POLL_INTERVAL = 5000; // 5 sekund (milliseconds)
+const POLL_INTERVAL = 5000; // 5 sekund
 const POLL_RETRIES = 25;
 
 interface CaptchaInResponse {
@@ -18,13 +18,13 @@ interface CaptchaResultResponse {
 }
 
 /**
- * 2Captcha orqali captcha yechish
- * @param driver Selenium WebDriver instance
+ * 2Captcha orqali captcha yechish (Playwright bilan)
+ * @param page Playwright Page instance
  * @param logPanel Log function (optional)
  * @returns true - muvaffaqiyatli, false - xatolik
  */
 export async function solveCaptcha(
-  driver: WebDriver,
+  page: Page,
   logPanel?: (message: string) => void
 ): Promise<boolean> {
   const log = (msg: string) => {
@@ -35,19 +35,19 @@ export async function solveCaptcha(
   try {
     log('🔍 CAPTCHA topilmoqda...');
 
-    // Captcha elementini topish
+    // ✅ Playwright locator ishlatish
     let captchaEl;
     try {
-      captchaEl = await driver.findElement(
-        By.css(".ant-modal-body img[src^='data:image']")
-      );
+      captchaEl = page.locator(".ant-modal-body img[src^='data:image']").first();
+      await captchaEl.waitFor({ state: 'visible', timeout: 5000 });
     } catch {
-      captchaEl = await driver.findElement(By.css('.ant-modal-body img'));
+      captchaEl = page.locator('.ant-modal-body img').first();
+      await captchaEl.waitFor({ state: 'visible', timeout: 5000 });
     }
 
     log('📷 Captcha elementi topildi, base64 olinmoqda...');
 
-    // src atributidan base64 olish
+    // ✅ src atributidan base64 olish
     const srcData = await captchaEl.getAttribute('src');
     let b64Image: string;
 
@@ -55,8 +55,8 @@ export async function solveCaptcha(
       b64Image = srcData.split('base64,')[1];
     } else {
       log('⚠️ Captcha base64 topilmadi, screenshot usuliga o\'tamiz.');
-      const captchaPng = await captchaEl.takeScreenshot();
-      b64Image = captchaPng; // Already in base64
+      const captchaPng = await captchaEl.screenshot({ type: 'png' });
+      b64Image = captchaPng.toString('base64');
     }
 
     // 2Captcha ga yuborish
@@ -83,7 +83,7 @@ export async function solveCaptcha(
 
     // Polling - yechimni kutish
     for (let i = 0; i < POLL_RETRIES; i++) {
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL));
+      await page.waitForTimeout(POLL_INTERVAL);
 
       const resultResponse = await axios.get<CaptchaResultResponse>(
         'http://2captcha.com/res.php',
@@ -105,9 +105,11 @@ export async function solveCaptcha(
         log(`✅ Captcha yechildi: ${captchaText}`);
 
         try {
-          const inputEl = await driver.findElement(By.name('captchaValue'));
+          // ✅ Playwright fill ishlatish
+          const inputEl = page.locator('input[name="captchaValue"]');
+          await inputEl.waitFor({ state: 'visible', timeout: 3000 });
           await inputEl.clear();
-          await inputEl.sendKeys(captchaText);
+          await inputEl.fill(captchaText);
           log('✍️ Captcha qiymati yozildi.');
           return true;
         } catch (e) {

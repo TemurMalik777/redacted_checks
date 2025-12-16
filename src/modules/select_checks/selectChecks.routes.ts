@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { SelectChecksController } from './selectChecks.controller';
 import { authMiddleware } from '../../middlewares/authMiddleware';
+import { Request, Response } from 'express';
+
 
 const router = Router();
 const controller = new SelectChecksController();
@@ -11,6 +13,50 @@ const controller = new SelectChecksController();
  *   name: SelectChecks
  *   description: Select Checks CRUD API'lari
  */
+
+/**
+ * @swagger
+ * /api/select-checks/{id}/mark-ready:
+ *   patch:
+ *     summary: Select_check'ni automation uchun tayyor qilish
+ *     description: Ma'lumotlarni tahrirlangandan keyin isActive=true qilish
+ *     tags: [SelectChecks]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Tayyor holatga o'tkazildi
+ *       400:
+ *         description: Barcha maydonlar to'ldirilmagan
+ */
+router.patch(
+  '/:id/mark-ready',
+  authMiddleware,
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const selectCheck = await service.markAsReadyForProcessing(parseInt(id));
+
+      res.status(200).json({
+        success: true,
+        message: 'Automation uchun tayyor qilindi',
+        data: selectCheck,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Xato';
+      res.status(400).json({
+        success: false,
+        message,
+      });
+    }
+  }
+);
 
 /**
  * @swagger

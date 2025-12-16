@@ -392,4 +392,19 @@ export class SelectChecksService {
       message: `Barcha select_check'lar o'chirildi`,
     };
   }
+
+  async markAsReadyForProcessing(id: number) {
+    const selectCheck = await this.getById(id);
+
+    // Validatsiya - barcha majburiy maydonlar to'ldirilganmi?
+    if (!selectCheck.chekRaqam || !selectCheck.mxik || !selectCheck.ulchov) {
+      throw new Error("Barcha maydonlar to'ldirilishi kerak");
+    }
+
+    selectCheck.isActive = true;
+    selectCheck.automationStatus = 'pending';
+    await selectCheck.save();
+
+    return selectCheck;
+  }
 }

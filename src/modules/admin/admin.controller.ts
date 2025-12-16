@@ -7,10 +7,26 @@ import { Op } from 'sequelize';
  */
 class AdminController {
   /**
+   * Admin role tekshirish helper metodi
+   */
+  private checkAdminRole = (req: Request, res: Response): boolean => {
+    if (!req.user || req.user.role !== 'admin') {
+      res.status(403).json({
+        success: false,
+        message: "Ruxsat yo'q (faqat adminlar uchun)",
+      });
+      return false;
+    }
+    return true;
+  };
+
+  /**
    * GET /api/admin/users
    */
-  async getAllUsers(req: Request, res: Response): Promise<void> {
+  getAllUsers = async (req: Request, res: Response): Promise<void> => {
     try {
+      if (!this.checkAdminRole(req, res)) return;
+
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
       const search = req.query.search as string || '';
@@ -29,7 +45,7 @@ class AdminController {
         ];
       }
 
-      if (role && (role === 'user' || role === 'admin')) {
+      if (role && (role === 'admin' || role === 'user')) {
         whereClause.role = role;
       }
 
@@ -38,6 +54,7 @@ class AdminController {
         limit,
         offset,
         order: [['createdAt', 'DESC']],
+        attributes: { exclude: ['password', 'hashpassword'] },
       });
 
       res.status(200).json({
@@ -59,13 +76,15 @@ class AdminController {
         message: 'Userlarni olishda xato',
       });
     }
-  }
+  };
 
   /**
    * PUT /api/admin/users/:id
    */
-  async updateUser(req: Request, res: Response): Promise<void> {
+  updateUser = async (req: Request, res: Response): Promise<void> => {
     try {
+      if (!this.checkAdminRole(req, res)) return;
+
       const { id } = req.params;
       const { firstName, lastName, email, phone, role, isActive } = req.body;
 
@@ -102,13 +121,15 @@ class AdminController {
         message: 'Userni tahrirlashda xato',
       });
     }
-  }
+  };
 
   /**
    * DELETE /api/admin/users/:id
    */
-  async deleteUser(req: Request, res: Response): Promise<void> {
+  deleteUser = async (req: Request, res: Response): Promise<void> => {
     try {
+      if (!this.checkAdminRole(req, res)) return;
+
       const { id } = req.params;
 
       if (req.user?.id === parseInt(id)) {
@@ -142,13 +163,15 @@ class AdminController {
         message: 'Userni o\'chirishda xato',
       });
     }
-  }
+  };
 
   /**
    * GET /api/admin/dashboard/stats
    */
-  async getDashboardStats(req: Request, res: Response): Promise<void> {
+  getDashboardStats = async (req: Request, res: Response): Promise<void> => {
     try {
+      if (!this.checkAdminRole(req, res)) return;
+
       const [
         totalUsers,
         totalImports,
@@ -220,13 +243,15 @@ class AdminController {
         message: 'Statistikani olishda xato',
       });
     }
-  }
+  };
 
   /**
    * GET /api/admin/imports
    */
-  async getAllImports(req: Request, res: Response): Promise<void> {
+  getAllImports = async (req: Request, res: Response): Promise<void> => {
     try {
+      if (!this.checkAdminRole(req, res)) return;
+
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
       const status = req.query.status as string;
@@ -285,13 +310,15 @@ class AdminController {
         message: 'Importlarni olishda xato',
       });
     }
-  }
+  };
 
   /**
    * GET /api/admin/imports/:id
    */
-  async getImportDetails(req: Request, res: Response): Promise<void> {
+  getImportDetails = async (req: Request, res: Response): Promise<void> => {
     try {
+      if (!this.checkAdminRole(req, res)) return;
+
       const { id } = req.params;
 
       const importRecord = await Import.findByPk(id, {
@@ -352,7 +379,147 @@ class AdminController {
         message: 'Import ma\'lumotini olishda xato',
       });
     }
-  }
+  };
+
+  /**
+   * PUT /api/admin/users/:id/role
+   */
+  changeUserRole = async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!this.checkAdminRole(req, res)) return;
+
+      const { id } = req.params;
+      const { role } = req.body;
+
+      if (!role || (role !== 'user' && role !== 'admin')) {
+        res.status(400).json({
+          success: false,
+          message: 'Role "user" yoki "admin" bo\'lishi kerak',
+        });
+        return;
+      }
+
+      const user = await User.findByPk(id);
+      if (!user) {
+        res.status(404).json({
+          success: false,
+          message: 'User topilmadi',
+        });
+        return;
+      }
+
+      await user.update({ role });
+
+      res.status(200).json({
+        success: true,
+        message: `User ${role} qilindi`,
+        data: { user: user.toJSON() },
+      });
+    } catch (error) {
+      console.error('Change user role error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Roleni o\'zgartirishda xato',
+      });
+    }
+  };
+
+  /**
+   * POST /api/admin/users/:id/block
+   */
+  blockUser = async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!this.checkAdminRole(req, res)) return;
+
+      const { id } = req.params;
+      const user = await User.findByPk(id);
+
+      if (!user) {
+        res.status(404).json({
+          success: false,
+          message: 'User topilmadi',
+        });
+        return;
+      }
+
+      await user.update({ isActive: false });
+
+      res.status(200).json({
+        success: true,
+        message: 'User bloklandi',
+        data: { user: user.toJSON() },
+      });
+    } catch (error) {
+      console.error('Block user error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Userni bloklashda xato',
+      });
+    }
+  };
+
+  /**
+   * POST /api/admin/users/:id/unblock
+   */
+  unblockUser = async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!this.checkAdminRole(req, res)) return;
+
+      const { id } = req.params;
+      const user = await User.findByPk(id);
+
+      if (!user) {
+        res.status(404).json({
+          success: false,
+          message: 'User topilmadi',
+        });
+        return;
+      }
+
+      await user.update({ isActive: true });
+
+      res.status(200).json({
+        success: true,
+        message: 'User aktivlashtirildi',
+        data: { user: user.toJSON() },
+      });
+    } catch (error) {
+      console.error('Unblock user error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Userni aktivlashtirishda xato',
+      });
+    }
+  };
+
+  /**
+   * GET /api/admin/admins
+   */
+  getAllAdmins = async (req: Request, res: Response): Promise<void> => {
+    try {
+      if (!this.checkAdminRole(req, res)) return;
+
+      const admins = await User.findAll({
+        where: { role: 'admin' },
+        attributes: { exclude: ['password', 'hashpassword'] },
+        order: [['createdAt', 'DESC']],
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          admins: admins.map(a => a.toJSON()),
+          total: admins.length,
+        },
+      });
+    } catch (error) {
+      console.error('Get all admins error:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Adminlarni olishda xato',
+      });
+    }
+  };
 }
 
 export default new AdminController();

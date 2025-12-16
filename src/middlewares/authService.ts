@@ -55,7 +55,7 @@ class AuthService {
     return jwt.sign(
       payload,
       config.ACCESS_TOKEN_SECRET as Secret,
-      { expiresIn: config.ACCESS_TOKEN_EXPIRES_IN || '15m' }
+      { expiresIn: config.ACCESS_TOKEN_EXPIRES_IN || '1d' }
     );
   }
 

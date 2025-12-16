@@ -33,7 +33,7 @@ Swagger UI da test qilish uchun:
     },
     servers: [
       {
-        url: 'http://localhost:3000',
+        url: 'http://localhost:3001',
         description: 'Development server',
       },
     ],
@@ -232,7 +232,7 @@ Swagger UI da test qilish uchun:
         },
       },
     },
-    security: [{ BearerAuth: [] }],
+    // security: [{ BearerAuth: [] }],
   },
   apis: ['./src/modules/**/*.routes.ts', './src/modules/**/*.ts'],
 };

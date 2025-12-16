@@ -36,7 +36,7 @@ class UserController {
       const ipAddress = getIpAddress(req);
       const { user, accessToken, refreshToken } = await authService.register(
         req.body,
-        ipAddress
+        ipAddress,
       );
 
       // Refresh token ni cookie ga saqlash
@@ -44,14 +44,15 @@ class UserController {
 
       res.status(201).json({
         success: true,
-        message: 'Muvaffaqiyatli ro\'yxatdan o\'tdingiz!',
+        message: "Muvaffaqiyatli ro'yxatdan o'tdingiz!",
         data: {
           user: user.toJSON(),
           accessToken,
         },
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Ro\'yxatdan o\'tishda xato';
+      const message =
+        error instanceof Error ? error.message : "Ro'yxatdan o'tishda xato";
 
       res.status(400).json({
         success: false,
@@ -68,7 +69,7 @@ class UserController {
       const ipAddress = getIpAddress(req);
       const { user, accessToken, refreshToken } = await authService.login(
         req.body,
-        ipAddress
+        ipAddress,
       );
 
       // Refresh token ni cookie ga saqlash
@@ -83,7 +84,8 @@ class UserController {
         },
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Login qilishda xato';
+      const message =
+        error instanceof Error ? error.message : 'Login qilishda xato';
 
       res.status(401).json({
         success: false,
@@ -108,10 +110,8 @@ class UserController {
       }
 
       const ipAddress = getIpAddress(req);
-      const { accessToken, refreshToken } = await authService.refreshAccessToken(
-        oldRefreshToken,
-        ipAddress
-      );
+      const { accessToken, refreshToken } =
+        await authService.refreshAccessToken(oldRefreshToken, ipAddress);
 
       // Yangi refresh token ni cookie ga saqlash
       res.cookie('refreshToken', refreshToken, getCookieOptions());
@@ -124,7 +124,8 @@ class UserController {
         },
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Token yangilashda xato';
+      const message =
+        error instanceof Error ? error.message : 'Token yangilashda xato';
 
       // Cookie ni o'chirish
       res.clearCookie('refreshToken');
@@ -216,7 +217,7 @@ class UserController {
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'User ma\'lumotini olishda xato',
+        message: "User ma'lumotini olishda xato",
       });
     }
   }
@@ -241,7 +242,7 @@ class UserController {
       if (!isOldPasswordValid) {
         res.status(400).json({
           success: false,
-          message: 'Eski parol noto\'g\'ri',
+          message: "Eski parol noto'g'ri",
         });
         return;
       }
@@ -252,12 +253,12 @@ class UserController {
 
       res.status(200).json({
         success: true,
-        message: 'Parol muvaffaqiyatli o\'zgartirildi',
+        message: "Parol muvaffaqiyatli o'zgartirildi",
       });
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'Parolni o\'zgartirishda xato',
+        message: "Parolni o'zgartirishda xato",
       });
     }
   }
@@ -268,8 +269,28 @@ class UserController {
   async getUserById(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
+      const requestedId = parseInt(id, 10);
 
-      const user = await authService.getUserById(parseInt(id, 10));
+      // ❌ Agar user authentifikatsiya qilinmagan bo'lsa
+      if (!req.user) {
+        res.status(401).json({
+          success: false,
+          message: 'Autentifikatsiya talab qilinadi',
+        });
+        return;
+      }
+
+      // ❌ Agar user boshqa userning profilini ko'rmoqchi bo'lsa
+      if (req.user.id !== requestedId && req.user.role !== 'admin') {
+        res.status(403).json({
+          success: false,
+          message: 'Bu profil sizga tegishli emas',
+        });
+        return;
+      }
+
+      // ✅ Agar o'z profili yoki admin bo'lsa
+      const user = await authService.getUserById(requestedId);
 
       if (!user) {
         res.status(404).json({
@@ -288,10 +309,9 @@ class UserController {
     } catch (error) {
       res.status(500).json({
         success: false,
-        message: 'User ma\'lumotini olishda xato',
+        message: "User ma'lumotini olishda xato",
       });
     }
   }
 }
-
 export default new UserController();

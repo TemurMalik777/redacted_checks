@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import userController from './user.controller';
+import { authenticate } from '../../middlewares/authenticate';
 
 const router = Router();
 
@@ -19,6 +21,9 @@ const router = Router();
  *               - username
  *               - password
  *               - email
+ *               - firstName
+ *               - lastName
+ *               - phone
  *             properties:
  *               username:
  *                 type: string
@@ -44,32 +49,10 @@ const router = Router();
  *     responses:
  *       201:
  *         description: User yaratildi
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: User yaratildi
- *                 data:
- *                   type: object
- *                   properties:
- *                     user:
- *                       $ref: '#/components/schemas/User'
- *                     accessToken:
- *                       type: string
- *                     refreshToken:
- *                       type: string
  *       400:
  *         description: Validatsiya xatosi
  */
-router.post('/register', async (req, res) => {
-  res.status(201).json({ success: true, message: 'User registered' });
-});
+router.post('/register', userController.register);
 
 /**
  * @swagger
@@ -98,37 +81,55 @@ router.post('/register', async (req, res) => {
  *     responses:
  *       200:
  *         description: Login muvaffaqiyatli
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     user:
- *                       $ref: '#/components/schemas/User'
- *                     accessToken:
- *                       type: string
- *                       example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
- *                     refreshToken:
- *                       type: string
  *       401:
  *         description: Noto'g'ri username yoki parol
  */
-router.post('/login', async (req, res) => {
-  res.json({
-    success: true,
-    data: {
-      user: {},
-      accessToken: 'token...',
-      refreshToken: 'refresh...',
-    },
-  });
-});
+router.post('/login', userController.login);
+
+/**
+ * @swagger
+ * /api/auth/refresh:
+ *   post:
+ *     summary: Access token ni yangilash
+ *     description: Refresh token orqali yangi access token olish
+ *     tags: [Authentication]
+ *     responses:
+ *       200:
+ *         description: Token yangilandi
+ *       401:
+ *         description: Refresh token topilmadi yoki yaroqsiz
+ */
+router.post('/refresh', userController.refreshToken);
+
+/**
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     summary: Tizimdan chiqish
+ *     description: Refresh token ni bekor qilish
+ *     tags: [Authentication]
+ *     responses:
+ *       200:
+ *         description: Logout muvaffaqiyatli
+ */
+router.post('/logout', userController.logout);
+
+/**
+ * @swagger
+ * /api/auth/logout-all:
+ *   post:
+ *     summary: Barcha qurilmalardan chiqish
+ *     description: User ning barcha refresh tokenlarini bekor qilish
+ *     tags: [Authentication]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Barcha qurilmalardan chiqildi
+ *       401:
+ *         description: Autentifikatsiya talab qilinadi
+ */
+router.post('/logout-all', authenticate, userController.logoutAll);
 
 /**
  * @swagger
@@ -142,22 +143,10 @@ router.post('/login', async (req, res) => {
  *     responses:
  *       200:
  *         description: User ma'lumotlari
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                 data:
- *                   type: object
- *                   properties:
- *                     user:
- *                       $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Autentifikatsiya talab qilinadi
  */
-router.get('/me', async (req, res) => {
-  res.json({ success: true, data: { user: {} } });
-});
+router.get('/me', authenticate, userController.getMe);
 
 /**
  * @swagger
@@ -188,9 +177,37 @@ router.get('/me', async (req, res) => {
  *     responses:
  *       200:
  *         description: Parol o'zgartirildi
+ *       400:
+ *         description: Eski parol noto'g'ri
+ *       401:
+ *         description: Autentifikatsiya talab qilinadi
  */
-router.put('/change-password', async (req, res) => {
-  res.json({ success: true, message: 'Password changed' });
-});
+router.put('/change-password', authenticate, userController.changePassword);
+
+/**
+ * @swagger
+ * /api/auth/profile/{id}:
+ *   get:
+ *     summary: User ma'lumotlarini ID bo'yicha olish
+ *     description: Faqat o'z profilini ko'rish mumkin (admin barcha userlarni ko'radi)
+ *     tags: [Authentication]
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: User ID
+ *     responses:
+ *       200:
+ *         description: User ma'lumotlari
+ *       403:
+ *         description: Bu profil sizga tegishli emas
+ *       404:
+ *         description: User topilmadi
+ */
+router.get('/profile/:id', authenticate, userController.getUserById);
 
 export default router;
