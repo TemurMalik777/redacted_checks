@@ -3,32 +3,44 @@ import sequelize from '../../config/database';
 
 /**
  * Check interfeysi
- * 
+ *
  * Bu jadval Excel dan import qilinadigan cheklar uchun
  * Har bir chek alohida qator sifatida saqlanadi
  */
 export interface CheckAttributes {
   id: number;
-  uuid: string
+  uuid: string;
   creation_date_check: string; // Chek bazada yartilgan vaqti
-  chekRaqam: string;          // Chek raqami - UNIQUE
-  chekSumma: number;          // Chek summasi (decimal)
-  maxsulotNomi: string;       // Maxsulot nomi
-  processed: boolean;         // Bu chek qayta ishlangani (select_checks ga qo'shilgan)
-  createdBy: number;          // Qaysi user yaratgan
+  chekRaqam: string; // Chek raqami - UNIQUE
+  chekSumma: number; // Chek summasi (decimal)
+  maxsulotNomi: string; // Maxsulot nomi
+  processed: boolean; // Bu chek qayta ishlangani (select_checks ga qo'shilgan)
+  createdBy: number; // Qaysi user yaratgan
   source: 'excel' | 'manual'; // Qayerdan kelgani
-  importId?: number;          // Qaysi import operatsiyasiga tegishli
+  importId?: number; // Qaysi import operatsiyasiga tegishli
   createdAt?: Date;
   updatedAt?: Date;
 }
 
-export interface CheckCreationAttributes 
-  extends Optional<CheckAttributes, 'id' | 'uuid' | 'processed' | 'source' | 'importId' | 'createdAt' | 'updatedAt'> {}
+export interface CheckCreationAttributes
+  extends Optional<
+    CheckAttributes,
+    | 'id'
+    | 'uuid'
+    | 'processed'
+    | 'source'
+    | 'importId'
+    | 'createdAt'
+    | 'updatedAt'
+  > {}
 
 /**
  * Check Model
  */
-class Check extends Model<CheckAttributes, CheckCreationAttributes> implements CheckAttributes {
+class Check
+  extends Model<CheckAttributes, CheckCreationAttributes>
+  implements CheckAttributes
+{
   public id!: number;
   public uuid!: string;
   public creation_date_check!: string;
@@ -39,7 +51,7 @@ class Check extends Model<CheckAttributes, CheckCreationAttributes> implements C
   public createdBy!: number;
   public source!: 'excel' | 'manual';
   public importId?: number;
-  
+
   public readonly createdAt!: Date;
   public readonly updatedAt!: Date;
 
@@ -76,18 +88,18 @@ Check.init(
     chekRaqam: {
       type: DataTypes.STRING(100),
       allowNull: false,
-      unique: true,  // Chek raqam unique bo'lishi kerak
+      unique: true, // Chek raqam unique bo'lishi kerak
       field: 'chek_raqam',
       validate: {
         notEmpty: true,
       },
     },
     chekSumma: {
-      type: DataTypes.DECIMAL(15, 2),  // 15 raqam, 2 ta kasr qism
+      type: DataTypes.DECIMAL(15, 2), // 15 raqam, 2 ta kasr qism
       allowNull: false,
       field: 'chek_summa',
       validate: {
-        min: 0,  // Manfiy summa bo'lmasligi kerak
+        min: 0, // Manfiy summa bo'lmasligi kerak
       },
     },
     maxsulotNomi: {
@@ -101,8 +113,8 @@ Check.init(
     processed: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
-      defaultValue: false,  // Default - qayta ishlanmagan
-      comment: 'Bu chek select_checks jadvaliga qo\'shilgani',
+      defaultValue: false, // Default - qayta ishlanmagan
+      comment: "Bu chek select_checks jadvaliga qo'shilgani",
     },
     createdBy: {
       type: DataTypes.INTEGER,
@@ -126,6 +138,9 @@ Check.init(
         model: 'imports',
         key: 'id',
       },
+      // QO'SHISH:
+      onDelete: 'SET NULL',
+      onUpdate: 'CASCADE',
     },
   },
   {
@@ -151,7 +166,7 @@ Check.init(
         fields: ['created_at'],
       },
     ],
-  }
+  },
 );
 
 export default Check;

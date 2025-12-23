@@ -3,42 +3,46 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import swaggerUi from 'swagger-ui-express';
 import { config } from './config/env';
-import { connectDatabase, disconnectDatabase } from './config/database';
+// import { connectDatabase, disconnectDatabase } from './config/database';
+import { initializeDatabase } from './database/database';
+import { closeDatabase } from './config/database';
 import { swaggerSpec } from './config/swagger.config';
-import './modules/index';
 
+// redis
+import { testRedisConnection, closeRedis } from './config/redis';
 
 // Routes
 import userRoutes from './modules/user/user.routes';
 import adminRoutes from './modules/admin/admin.routes';
-import automationRoutes from './modules/automationRoutes';
+import automationRoutes from './modules/automation/automation.routes';
+import checksRoutes from './modules/checks/checks.routes';
 
 const app: Application = express();
 
 /**
  * Middleware'lar
  */
-
+const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || [];
 app.use(
   cors({
-    origin: 'http://localhost:3001',
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
   }),
 );
 
-
-// 2. Cookie Parser
 app.use(cookieParser());
-
-// 3. JSON va URL-encoded
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// 4. Static fayllar
 app.use('/uploads', express.static('uploads'));
 
 /**
- * Swagger UI ✅ YANGI
+ * Swagger UI
  */
 app.use(
   '/api-docs',
@@ -54,7 +58,6 @@ app.use(
         activate: true,
         theme: 'monokai',
       },
-      // ✅ BU MUHIM - Authorization headerni majburiy qo'shish
       requestInterceptor: (req: any) => {
         console.log('📤 Swagger request:', req.url);
         console.log('📤 Headers:', req.headers);
@@ -64,9 +67,6 @@ app.use(
   }),
 );
 
-/**
- * Swagger JSON endpoint ✅ YANGI
- */
 app.get('/api-docs.json', (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'application/json');
   res.send(swaggerSpec);
@@ -92,6 +92,7 @@ app.get('/', (req: Request, res: Response) => {
 app.use('/api/auth', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/automation', automationRoutes);
+app.use('/api/checks', checksRoutes);
 
 /**
  * 404
@@ -131,43 +132,78 @@ app.use(
  */
 const startServer = async () => {
   try {
-    await connectDatabase();
+    console.log('');
+    console.log('═══════════════════════════════════════════════');
+    console.log('🚀 Server ishga tushmoqda...');
+    console.log('═══════════════════════════════════════════════\n');
 
+    // 1. Database initialization
+    console.log('📊 1/3: Database ulanishi...');
+    await initializeDatabase();
+
+    // 2. Redis initialization ✅ YANGI
+    console.log('\n🔴 2/3: Redis ulanishi...');
+    const redisConnected = await testRedisConnection();
+    if (!redisConnected) {
+      console.error("\n❌ Redis ga ulanib bo'lmadi!");
+      console.error('\nIltimos tekshiring:');
+      console.error('  1. Redis server ishlab turibmi?');
+      console.error('     Docker: docker ps | grep redis');
+      console.error('     Local: sudo systemctl status redis');
+      console.error("  2. .env fayldagi Redis sozlamalari to'g'ri?");
+      console.error(`     REDIS_HOST=${config.REDIS_HOST}`);
+      console.error(`     REDIS_PORT=${config.REDIS_PORT}\n`);
+      throw new Error('Redis connection failed');
+    }
+
+    // 3. Papkalarni yaratish
+    console.log('\n📁 3/3: Kerakli papkalarni yaratish...');
     const fs = require('fs');
     const path = require('path');
 
-    // Kerakli papkalarni yaratish
     const dirs = ['uploads', 'logs', 'screenshots', 'captchas', 'browser-data'];
 
     dirs.forEach((dir) => {
       const dirPath = path.join(process.cwd(), dir);
       if (!fs.existsSync(dirPath)) {
         fs.mkdirSync(dirPath, { recursive: true });
-        console.log(`📁 Papka yaratildi: ${dir}/`);
+        console.log(`   ✅ ${dir}/`);
+      } else {
+        console.log(`   ✓ ${dir}/ (mavjud)`);
       }
     });
 
+    // 4. Express server ni boshlash
     app.listen(config.PORT, () => {
       console.log('');
       console.log('═══════════════════════════════════════════════');
-      console.log('🚀 Server muvaffaqiyatli ishga tushdi!');
+      console.log('✅ SERVER TAYYOR!');
       console.log('═══════════════════════════════════════════════');
-      console.log(`📍 URL: http://localhost:${config.PORT}`);
-      console.log(`📚 API Docs: http://localhost:${config.PORT}/api-docs`);
-      console.log(`🌍 Environment: ${config.NODE_ENV}`);
-      console.log(`📅 Vaqt: ${new Date().toLocaleString()}`);
+      console.log(`📍 URL:          http://localhost:${config.PORT}`);
+      console.log(`📚 API Docs:     http://localhost:${config.PORT}/api-docs`);
+      console.log(`🌍 Environment:  ${config.NODE_ENV}`);
+      console.log(`📊 Database:     PostgreSQL (${config.DB_NAME})`);
+      console.log(`🔴 Redis:        ${config.REDIS_HOST}:${config.REDIS_PORT}`);
+      console.log(`📅 Vaqt:         ${new Date().toLocaleString('uz-UZ')}`);
       console.log('═══════════════════════════════════════════════');
       console.log('');
       console.log('📋 Available Routes:');
       console.log('   🔐 /api/auth/*       - Authentication');
       console.log('   👨‍💼 /api/admin/*      - Admin panel');
-      console.log('   🤖 /api/automation/* - Browser automation');
+      console.log(
+        '   🤖 /api/automation/* - Browser automation (Redis sessions)',
+      );
+      console.log('   📝 /api/checks/*     - Checks management');
       console.log('   📖 /api-docs         - Swagger documentation');
       console.log('═══════════════════════════════════════════════');
       console.log('');
     });
   } catch (error) {
-    console.error('❌ Server ishga tushmadi:', error);
+    console.error('\n❌ Server ishga tushmadi:', error);
+    console.error(
+      '\nXatolik tafsilotlari:',
+      error instanceof Error ? error.message : error,
+    );
     process.exit(1);
   }
 };
@@ -179,7 +215,12 @@ const gracefulShutdown = async (signal: string) => {
   console.log(`\n⚠️  ${signal} signal qabul qilindi. Server to'xtatilmoqda...`);
 
   try {
-    await disconnectDatabase();
+    console.log('1️⃣  Redis ulanishini yopish...');
+    await closeRedis(); // ✅ YANGI - Redis birinchi yopiladi
+
+    console.log('2️⃣  Database ulanishini yopish...');
+    await closeDatabase();
+
     console.log("✅ Server to'g'ri to'xtatildi");
     process.exit(0);
   } catch (error) {

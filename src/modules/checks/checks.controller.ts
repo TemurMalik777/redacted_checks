@@ -24,7 +24,7 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     const allowedExtensions = ['.xlsx', '.xls'];
     const ext = path.extname(file.originalname).toLowerCase();
-    
+
     if (allowedExtensions.includes(ext)) {
       cb(null, true);
     } else {
@@ -80,10 +80,21 @@ class ChecksController {
 
       console.log('📂 Fayl yuklandi:', req.file.originalname);
 
+      // ImportId validatsiyasi - 0 bo'lsa undefined qilish
+      let importId: number | undefined = undefined;
+
+      if (req.body.importId) {
+        const parsedImportId = parseInt(req.body.importId);
+        // Faqat 0 dan katta bo'lsa qo'shish
+        if (parsedImportId > 0) {
+          importId = parsedImportId;
+        }
+      }
+
       const result = await checksService.importFromExcel(
         req.file.path,
         req.user!.id,
-        req.body.importId ? parseInt(req.body.importId) : undefined
+        importId, // 0 bo'lsa undefined yuboriladi
       );
 
       // Faylni o'chirish
@@ -98,13 +109,14 @@ class ChecksController {
       });
     } catch (error) {
       console.error('Import from Excel error:', error);
-      
+
       // Xato bo'lsa faylni o'chirish
       if (req.file && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
       }
 
-      const message = error instanceof Error ? error.message : 'Excel import qilishda xato';
+      const message =
+        error instanceof Error ? error.message : 'Excel import qilishda xato';
 
       res.status(500).json({
         success: false,
@@ -124,7 +136,7 @@ class ChecksController {
       if (!ids || !Array.isArray(ids) || ids.length === 0) {
         res.status(400).json({
           success: false,
-          message: 'IDs array bo\'sh yoki noto\'g\'ri',
+          message: "IDs array bo'sh yoki noto'g'ri",
         });
         return;
       }
@@ -139,7 +151,7 @@ class ChecksController {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Xato';
       console.error('Bulk delete checks error:', error);
-      
+
       res.status(500).json({
         success: false,
         message,
@@ -157,7 +169,7 @@ class ChecksController {
       if (!ids || !Array.isArray(ids) || ids.length === 0) {
         res.status(400).json({
           success: false,
-          message: 'IDs array bo\'sh',
+          message: "IDs array bo'sh",
         });
         return;
       }
@@ -187,7 +199,7 @@ class ChecksController {
       if (!ids || !Array.isArray(ids) || ids.length === 0) {
         res.status(400).json({
           success: false,
-          message: 'IDs array bo\'sh',
+          message: "IDs array bo'sh",
         });
         return;
       }
@@ -216,9 +228,15 @@ class ChecksController {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
       const search = req.query.search as string;
-      const processed = req.query.processed === 'true' ? true : 
-                       req.query.processed === 'false' ? false : undefined;
-      const importId = req.query.importId ? parseInt(req.query.importId as string) : undefined;
+      const processed =
+        req.query.processed === 'true'
+          ? true
+          : req.query.processed === 'false'
+          ? false
+          : undefined;
+      const importId = req.query.importId
+        ? parseInt(req.query.importId as string)
+        : undefined;
       const startDate = req.query.startDate as string;
       const endDate = req.query.endDate as string;
 
@@ -241,7 +259,7 @@ class ChecksController {
       console.error('Get all checks error:', error);
       res.status(500).json({
         success: false,
-        message: 'Checklar ro\'yxatini olishda xato',
+        message: "Checklar ro'yxatini olishda xato",
       });
     }
   };
@@ -252,12 +270,13 @@ class ChecksController {
    */
   createCheck = async (req: Request, res: Response): Promise<void> => {
     try {
-      const { creation_date_check, chekRaqam, chekSumma, maxsulotNomi } = req.body;
+      const { creation_date_check, chekRaqam, chekSumma, maxsulotNomi } =
+        req.body;
 
       if (!creation_date_check || !chekRaqam || !chekSumma || !maxsulotNomi) {
         res.status(400).json({
           success: false,
-          message: 'Barcha majburiy maydonlar to\'ldirilishi kerak',
+          message: "Barcha majburiy maydonlar to'ldirilishi kerak",
         });
         return;
       }
@@ -277,7 +296,7 @@ class ChecksController {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Xato';
-      
+
       if (message.includes('allaqachon mavjud')) {
         res.status(400).json({
           success: false,
@@ -339,7 +358,7 @@ class ChecksController {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Xato';
-      
+
       if (message === 'Check topilmadi') {
         res.status(404).json({
           success: false,
@@ -350,7 +369,7 @@ class ChecksController {
 
       res.status(500).json({
         success: false,
-        message: 'Check ma\'lumotini olishda xato',
+        message: "Check ma'lumotini olishda xato",
       });
     }
   };
@@ -362,11 +381,18 @@ class ChecksController {
   updateCheck = async (req: Request, res: Response): Promise<void> => {
     try {
       const { id } = req.params;
-      const { creation_date_check, chekRaqam, chekSumma, maxsulotNomi, processed } = req.body;
+      const {
+        creation_date_check,
+        chekRaqam,
+        chekSumma,
+        maxsulotNomi,
+        processed,
+      } = req.body;
 
       const updateData: any = {};
-      
-      if (creation_date_check) updateData.creation_date_check = creation_date_check;
+
+      if (creation_date_check)
+        updateData.creation_date_check = creation_date_check;
       if (chekRaqam) updateData.chekRaqam = chekRaqam;
       if (chekSumma !== undefined) updateData.chekSumma = parseFloat(chekSumma);
       if (maxsulotNomi) updateData.maxsulotNomi = maxsulotNomi;
@@ -381,7 +407,7 @@ class ChecksController {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Xato';
-      
+
       if (message === 'Check topilmadi') {
         res.status(404).json({
           success: false,
@@ -417,11 +443,11 @@ class ChecksController {
 
       res.status(200).json({
         success: true,
-        message: 'Check muvaffaqiyatli o\'chirildi',
+        message: "Check muvaffaqiyatli o'chirildi",
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Xato';
-      
+
       if (message === 'Check topilmadi') {
         res.status(404).json({
           success: false,
@@ -441,7 +467,7 @@ class ChecksController {
       console.error('Delete check error:', error);
       res.status(500).json({
         success: false,
-        message: 'Check o\'chirishda xato',
+        message: "Check o'chirishda xato",
       });
     }
   };

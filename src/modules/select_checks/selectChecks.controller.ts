@@ -193,6 +193,19 @@ export class SelectChecksController {
   }
 
   /**
+   * Automation uchun tayyor qilish
+   * PATCH /api/select-checks/:id/mark-ready
+   */
+  async markAsReadyForProcessing(id: number) {
+    try {
+      const selectCheck = await service.markAsReadyForProcessing(id);
+      return selectCheck;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
    * Statistika
    * GET /api/select-checks/stats
    */

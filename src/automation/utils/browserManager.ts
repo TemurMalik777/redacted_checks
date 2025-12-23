@@ -20,7 +20,8 @@ export class BrowserManager {
       this.browser = await chromium.launchPersistentContext(this.userDataDir, {
         headless,
         viewport: { width: 1920, height: 1080 },
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        userAgent:
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         locale: 'uz-UZ',
         timezoneId: 'Asia/Tashkent',
         args: [
@@ -43,12 +44,12 @@ export class BrowserManager {
     }
   }
 
-
   private async setupAntiDetection(): Promise<void> {
     if (!this.page) return;
 
     // WebDriver property ni o'chirish
     await this.page.addInitScript(() => {
+      // @ts-ignore - Browser contextida ishlaydi
       Object.defineProperty(navigator, 'webdriver', {
         get: () => undefined,
       });

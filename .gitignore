@@ -38,3 +38,9 @@ coverage/
 # TypeScript
 *.tsbuildinfo
 node_modules
+
+# Browser automation files
+browser-data/
+screenshots/
+test-results/
+*.txt # cookie files

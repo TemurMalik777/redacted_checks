@@ -1,15 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
 import authService from './authService';
-import { User } from '../modules/index';
+// import { User } from '../modules/index';
+import '../types/express.d.ts';
 
-// ✅ Express Request type ni kengaytirish
-declare global {
-  namespace Express {
-    interface Request {
-      user?: User;
-    }
-  }
-}
+// // ✅ Express Request type ni kengaytirish
+// declare global {
+//   namespace Express {
+//     interface Request {
+//       user?: User;
+//     }
+//   }
+// }
 
 /**
  * Authentication Middleware
@@ -17,11 +18,11 @@ declare global {
 export const authenticate = async (
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       res.status(401).json({
         success: false,

@@ -4,7 +4,7 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import { authMiddleware } from '../../middlewares/authMiddleware';
-import { ExcelImportService } from '../excelImportService';
+import { ExcelImportService } from '../../services/excelImportService';
 
 const router = Router();
 

@@ -41,7 +41,7 @@ router.patch(
   async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const selectCheck = await service.markAsReadyForProcessing(parseInt(id));
+      const selectCheck = await controller.markAsReadyForProcessing(parseInt(id));
 
       res.status(200).json({
         success: true,

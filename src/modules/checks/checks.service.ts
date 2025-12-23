@@ -47,7 +47,7 @@ class ChecksService {
         blankrows: false,
       });
 
-      console.log(`📊 Excel'dan ${jsonData.length} ta qator o'qildi`);
+      // console.log(`📊 Excel'dan ${jsonData.length} ta qator o'qildi`);
 
       if (jsonData.length === 0) {
         await transaction.rollback();

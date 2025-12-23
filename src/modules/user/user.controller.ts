@@ -20,7 +20,7 @@ const getCookieOptions = () => {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict' as const,
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 kun
+    REFRESH_TOKEN_EXPIRES_IN : 7 * 24 * 60 * 60 * 1000, // 7 kun
   };
 };
 
@@ -51,16 +51,28 @@ class UserController {
         },
       });
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Ro'yxatdan o'tishda xato";
-
-      res.status(400).json({
+      let statusCode = 500;
+      let message = "Ro'yxatdan o'tishda xato";
+      
+      if (error instanceof Error) {
+        message = error.message;
+    
+    // Validation xatolari uchun 400
+    if (message.includes('mavjud') || message.includes('noto\'g\'ri')) {
+      statusCode = 400;
+    }
+    // Conflict xatolari uchun 409
+    else if (message.includes('allaqachon')) {
+      statusCode = 409;
+    }
+  }
+  
+      res.status(statusCode).json({
         success: false,
         message,
       });
     }
   }
-
   /**
    * POST /api/auth/login
    */
@@ -226,18 +238,18 @@ class UserController {
    * PUT /api/auth/change-password
    */
   async changePassword(req: Request, res: Response): Promise<void> {
-    try {
-      if (!req.user) {
-        res.status(401).json({
-          success: false,
-          message: 'Autentifikatsiya talab qilinadi',
-        });
-        return;
-      }
-
+    try {      
       const { oldPassword, newPassword } = req.body;
 
       const isOldPasswordValid = await req.user.comparePassword(oldPassword);
+      if (!isOldPasswordValid) {
+        res.status(401).json({
+          success: false,
+          message: "Eski parol noto'g'ri",
+        });
+        return;
+      }
+      
 
       if (!isOldPasswordValid) {
         res.status(400).json({
