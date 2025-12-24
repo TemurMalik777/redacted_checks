@@ -16,6 +16,10 @@ import userRoutes from './modules/user/user.routes';
 import adminRoutes from './modules/admin/admin.routes';
 import automationRoutes from './modules/automation/automation.routes';
 import checksRoutes from './modules/checks/checks.routes';
+import fakturaRoutes from './modules/faktura/faktura.routes';
+import invoiceRoutes from './modules/invoice/invoice.routes';
+import importRoutes from './modules/import/import.routes';
+import selectCheckRoutes from './modules/select_checks/selectChecks.routes';
 
 const app: Application = express();
 
@@ -59,8 +63,8 @@ app.use(
         theme: 'monokai',
       },
       requestInterceptor: (req: any) => {
-        console.log('📤 Swagger request:', req.url);
-        console.log('📤 Headers:', req.headers);
+        console.log('aa📤 Swagger request:', req.url);
+        console.log('aa📤 Headers:', req.headers);
         return req;
       },
     },
@@ -93,6 +97,10 @@ app.use('/api/auth', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/automation', automationRoutes);
 app.use('/api/checks', checksRoutes);
+app.use('/api/faktura', fakturaRoutes);
+app.use('/api/invoice', invoiceRoutes);
+app.use('/api/import', importRoutes);
+app.use('/api/select_checks', selectCheckRoutes);
 
 /**
  * 404

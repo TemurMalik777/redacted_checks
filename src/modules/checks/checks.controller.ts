@@ -3,6 +3,9 @@ import checksService from './checks.service';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import xlsx from 'xlsx';
+import sequelize from '../../config/database';
+import Check from '../checks/checks.model';
 
 // Multer konfiguratsiyasi
 const storage = multer.diskStorage({
@@ -68,62 +71,149 @@ class ChecksController {
    * POST /api/checks/import
    * Excel fayldan import qilish
    */
-  importFromExcel = async (req: Request, res: Response): Promise<void> => {
+  // src/modules/checks/checks.controller.ts
+
+  async importFromExcel(req: Request, res: Response) {
+    const transaction = await sequelize.transaction();
+
     try {
       if (!req.file) {
-        res.status(400).json({
+        return res.status(400).json({
           success: false,
-          message: 'Excel fayl yuklanmadi',
+          message: 'Fayl yuklanmadi',
         });
-        return;
       }
 
-      console.log('📂 Fayl yuklandi:', req.file.originalname);
+      // Excel faylni o'qish
+      const workbook = xlsx.readFile(req.file.path);
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows: any[] = xlsx.utils.sheet_to_json(worksheet);
 
-      // ImportId validatsiyasi - 0 bo'lsa undefined qilish
-      let importId: number | undefined = undefined;
+      const results = {
+        total: rows.length,
+        imported: 0,
+        failed: 0,
+        skipped: 0,
+        errors: [] as any[],
+      };
 
-      if (req.body.importId) {
-        const parsedImportId = parseInt(req.body.importId);
-        // Faqat 0 dan katta bo'lsa qo'shish
-        if (parsedImportId > 0) {
-          importId = parsedImportId;
+      // Import ID va User ID
+      const importId = req.body.importId
+        ? parseInt(req.body.importId)
+        : undefined;
+      const userId = (req as any).user?.id;
+
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: 'Foydalanuvchi topilmadi',
+        });
+      }
+
+      // Har bir qatorni qayta ishlash
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const rowNumber = i + 2;
+
+        try {
+          // ============================================
+          // CHECKS UCHUN MA'LUMOTLARNI TEKSHIRISH
+          // ============================================
+          const hasCheckData =
+            row['creation_date_check'] &&
+            row['chek_raqam'] &&
+            row['chek_summa'] &&
+            row['maxsulot_nomi'];
+
+          if (!hasCheckData) {
+            results.skipped++;
+            results.errors.push({
+              row: rowNumber,
+              message: "Checks uchun majburiy maydonlar to'ldirilmagan",
+              data: row,
+            });
+            continue;
+          }
+
+          // Check raqam dublikat tekshirish
+          const existingCheck = await Check.findOne({
+            where: { chekRaqam: row['chek_raqam'].toString().trim() },
+            transaction,
+          });
+
+          if (existingCheck) {
+            results.skipped++;
+            results.errors.push({
+              row: rowNumber,
+              message: `Dublikat chek raqam: ${row['chek_raqam']}`,
+              data: row,
+            });
+            continue;
+          }
+
+          // ============================================
+          // CHECK NI YARATISH
+          // ============================================
+          await Check.create(
+            {
+              creation_date_check: row['creation_date_check'],
+              chekRaqam: row['chek_raqam'].toString().trim(),
+              chekSumma: parseFloat(row['chek_summa']) || 0,
+              maxsulotNomi: row['maxsulot_nomi'],
+              processed: false,
+              createdBy: userId,
+              ...(importId && { importId }),
+            },
+            { transaction },
+          );
+
+          results.imported++;
+        } catch (error: any) {
+          results.failed++;
+          results.errors.push({
+            row: rowNumber,
+            message: error.message || "Noma'lum xatolik",
+            data: row,
+          });
+          console.error(`Qator ${rowNumber} xatosi:`, error);
         }
       }
 
-      const result = await checksService.importFromExcel(
-        req.file.path,
-        req.user!.id,
-        importId, // 0 bo'lsa undefined yuboriladi
-      );
+      // Transaction commit
+      await transaction.commit();
 
-      // Faylni o'chirish
-      if (fs.existsSync(req.file.path)) {
+      // Yuklangan faylni o'chirish
+      if (req.file.path && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
       }
 
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         message: 'Import muvaffaqiyatli yakunlandi',
-        data: result,
+        data: results,
       });
-    } catch (error) {
-      console.error('Import from Excel error:', error);
+    } catch (error: any) {
+      // Transaction rollback
+      await transaction.rollback();
 
-      // Xato bo'lsa faylni o'chirish
-      if (req.file && fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+      // Faylni o'chirish
+      if (req.file?.path && fs.existsSync(req.file.path)) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (unlinkError) {
+          console.error("Fayl o'chirishda xatolik:", unlinkError);
+        }
       }
 
-      const message =
-        error instanceof Error ? error.message : 'Excel import qilishda xato';
+      console.error('Import xatosi:', error);
 
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
-        message,
+        message: 'Import jarayonida xatolik',
+        error: error.message,
       });
     }
-  };
+  }
 
   /**
    * POST /api/checks/bulk/delete

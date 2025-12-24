@@ -1,6 +1,7 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 import { generalLimiter } from '../../middlewares/rateLimiterMiddleware';
+import invoiceController from './invoice.controller';
 
 const router = Router();
 
@@ -112,35 +113,7 @@ const router = Router();
  *       500:
  *         $ref: '#/components/responses/ServerError'
  */
-router.post('/create', authMiddleware, generalLimiter, async (req: Request, res: Response) => {
-  try {
-    const { taxSiteTin, taxSitePassword, nomer, sana, items } = req.body;
-
-    if (!taxSiteTin || !taxSitePassword) {
-      return res.status(400).json({
-        success: false,
-        message: 'Tax site credentials required',
-      });
-    }
-
-    // Invoice yaratish logikasi bu yerda bo'ladi
-    res.json({
-      success: true,
-      message: 'Invoice created',
-      data: {
-        invoiceId: 123,
-        processedItems: items?.length || 0,
-        totalAmount: 5000000.00,
-      },
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      error: error.message,
-    });
-  }
-});
+router.post('/create', authMiddleware, generalLimiter, invoiceController.create.bind(invoiceController));
 
 /**
  * @swagger
@@ -201,37 +174,7 @@ router.post('/create', authMiddleware, generalLimiter, async (req: Request, res:
  *       401:
  *         $ref: '#/components/responses/UnauthorizedError'
  */
-router.get('/:id', authMiddleware, async (req: Request, res: Response) => {
-  try {
-    const invoiceId = parseInt(req.params.id);
-
-    if (isNaN(invoiceId)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid invoice ID',
-      });
-    }
-
-    res.json({
-      success: true,
-      data: {
-        invoice: {
-          id: invoiceId,
-          nomer: 'INV-001',
-          sana: '2024-12-11',
-          status: 'completed',
-          items: [],
-        },
-      },
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      error: error.message,
-    });
-  }
-});
+router.get('/:id', authMiddleware, invoiceController.getById.bind(invoiceController));
 
 /**
  * @swagger
@@ -291,27 +234,6 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response) => {
  *       401:
  *         $ref: '#/components/responses/UnauthorizedError'
  */
-router.get('/list', authMiddleware, async (req: Request, res: Response) => {
-  try {
-    const limit = parseInt(req.query.limit as string) || 100;
-    const offset = parseInt(req.query.offset as string) || 0;
-
-    res.json({
-      success: true,
-      data: {
-        invoices: [],
-        total: 0,
-        limit,
-        offset,
-      },
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      message: 'Internal server error',
-      error: error.message,
-    });
-  }
-});
+router.get('/list', authMiddleware, invoiceController.getAll.bind(invoiceController));
 
 export default router;

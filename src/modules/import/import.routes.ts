@@ -110,7 +110,7 @@ const controller = new ImportController();
  *     summary: Barcha import'larni olish
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: query
  *         name: page

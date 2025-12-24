@@ -1,8 +1,133 @@
-import { Router, Request, Response } from 'express';
+// src/modules/faktura/faktura.routes.ts
+
+import { Router } from 'express';
 import { authMiddleware } from '../../middlewares/authMiddleware';
 import { generalLimiter } from '../../middlewares/rateLimiterMiddleware';
+import fakturaController from './faktura.controller';
 
 const router = Router();
+
+// Barcha route'lar himoyalangan
+router.use(authMiddleware, generalLimiter);
+
+/**
+ * ========================================
+ * STATISTIKA VA UMUMIY MA'LUMOTLAR
+ * ========================================
+ */
+
+/**
+ * @swagger
+ * /api/faktura/stats:
+ *   get:
+ *     summary: Faktura statistikasi
+ *     description: Fakturalar bo'yicha umumiy statistika
+ *     tags: [Faktura]
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Statistika
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+router.get('/stats', fakturaController.getStats);
+
+/**
+ * ========================================
+ * IMPORT OPERATSIYALARI
+ * ========================================
+ */
+
+/**
+ * @swagger
+ * /api/faktura/import:
+ *   post:
+ *     summary: Excel fayldan fakturalar import qilish
+ *     description: Faktura ma'lumotlarini Excel dan import qilish
+ *     tags: [Faktura]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Excel fayl (.xlsx yoki .xls)
+ *               importId:
+ *                 type: integer
+ *                 description: Import operatsiyasi ID (ixtiyoriy)
+ *     responses:
+ *       200:
+ *         description: Import muvaffaqiyatli yakunlandi
+ *       400:
+ *         description: Fayl yuklanmadi
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+router.post(
+  '/import',
+  fakturaController.uploadMiddleware,
+  fakturaController.importFromExcel
+);
+
+/**
+ * ========================================
+ * BULK OPERATSIYALAR
+ * ========================================
+ */
+
+/**
+ * @swagger
+ * /api/faktura/bulk/delete:
+ *   post:
+ *     summary: Ko'plab fakturalarni o'chirish
+ *     description: Bir nechta fakturalarni bir vaqtda o'chirish
+ *     tags: [Faktura]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - ids
+ *             properties:
+ *               ids:
+ *                 type: array
+ *                 items:
+ *                   type: integer
+ *                 example: [1, 2, 3, 4, 5]
+ *     responses:
+ *       200:
+ *         description: Fakturalar o'chirildi
+ *       400:
+ *         description: IDs array bo'sh
+ *       401:
+ *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
+ */
+router.post('/bulk/delete', fakturaController.bulkDeleteFakturas);
+
+/**
+ * ========================================
+ * CRUD OPERATSIYALAR
+ * ========================================
+ */
 
 /**
  * @swagger
@@ -32,42 +157,19 @@ const router = Router();
  *           type: boolean
  *         description: Aktiv fakturalar
  *       - in: query
- *         name: processed
+ *         name: mxik
  *         schema:
- *           type: boolean
- *         description: Qayta ishlangan fakturalar
+ *           type: string
+ *         description: MXIK kodi bo'yicha qidirish
  *     responses:
  *       200:
  *         description: Fakturalar ro'yxati
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     fakturas:
- *                       type: array
- *                       items:
- *                         $ref: '#/components/schemas/Faktura'
- *                     pagination:
- *                       $ref: '#/components/schemas/Pagination'
  *       401:
  *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
  */
-router.get('/', authMiddleware, generalLimiter, async (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    data: {
-      fakturas: [],
-      pagination: { total: 0, page: 1, limit: 20, totalPages: 0 },
-    },
-  });
-});
+router.get('/', fakturaController.getAllFakturas);
 
 /**
  * @swagger
@@ -88,132 +190,14 @@ router.get('/', authMiddleware, generalLimiter, async (req: Request, res: Respon
  *     responses:
  *       200:
  *         description: Faktura ma'lumotlari
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     faktura:
- *                       $ref: '#/components/schemas/Faktura'
  *       404:
  *         $ref: '#/components/responses/NotFoundError'
  *       401:
  *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
  */
-router.get('/:id', authMiddleware, async (req: Request, res: Response) => {
-  const { id } = req.params;
-  res.json({
-    success: true,
-    data: { faktura: { id: parseInt(id) } },
-  });
-});
-
-/**
- * @swagger
- * /api/faktura:
- *   post:
- *     summary: Yangi faktura yaratish
- *     description: Faktura ma'lumotlarini kiritish va yaratish
- *     tags: [Faktura]
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - nomer
- *               - sana
- *               - mxik
- *               - tovar_nomi
- *               - miqdori
- *               - narxi
- *             properties:
- *               nomer:
- *                 type: string
- *                 example: FAK-001
- *                 description: Faktura raqami
- *               sana:
- *                 type: string
- *                 format: date
- *                 example: '2024-12-11'
- *                 description: Faktura sanasi
- *               mxik:
- *                 type: string
- *                 example: '12345678'
- *                 description: MXIK kodi
- *               tovar_nomi:
- *                 type: string
- *                 example: Dori vositalari
- *                 description: Tovar nomi
- *               olchov_birligi:
- *                 type: string
- *                 example: dona
- *                 description: O'lchov birligi
- *               miqdori:
- *                 type: number
- *                 format: decimal
- *                 example: 100.0
- *                 description: Miqdori
- *               narxi:
- *                 type: number
- *                 format: decimal
- *                 example: 50000.00
- *                 description: Narxi
- *               summa:
- *                 type: number
- *                 format: decimal
- *                 example: 5000000.00
- *                 description: Umumiy summa
- *               qqs_stavka:
- *                 type: number
- *                 format: decimal
- *                 example: 15.0
- *                 description: QQS stavkasi (%)
- *               qqs_summa:
- *                 type: number
- *                 format: decimal
- *                 example: 750000.00
- *                 description: QQS summasi
- *     responses:
- *       201:
- *         description: Faktura yaratildi
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Faktura muvaffaqiyatli yaratildi
- *                 data:
- *                   type: object
- *                   properties:
- *                     faktura:
- *                       $ref: '#/components/schemas/Faktura'
- *       400:
- *         description: Validatsiya xatosi
- *       401:
- *         $ref: '#/components/responses/UnauthorizedError'
- */
-router.post('/', authMiddleware, generalLimiter, async (req: Request, res: Response) => {
-  res.status(201).json({
-    success: true,
-    message: 'Faktura yaratildi',
-    data: { faktura: req.body },
-  });
-});
+router.get('/:id', fakturaController.getFakturaById);
 
 /**
  * @swagger
@@ -238,48 +222,29 @@ router.post('/', authMiddleware, generalLimiter, async (req: Request, res: Respo
  *           schema:
  *             type: object
  *             properties:
- *               nomer:
+ *               creation_data_faktura:
  *                 type: string
- *               sana:
- *                 type: string
- *                 format: date
  *               mxik:
  *                 type: string
- *               tovar_nomi:
+ *               ulchov:
  *                 type: string
- *               miqdori:
+ *               fakturaSumma:
  *                 type: number
- *               narxi:
+ *               fakturaMiqdor:
  *                 type: number
  *               isActive:
- *                 type: boolean
- *               processed:
  *                 type: boolean
  *     responses:
  *       200:
  *         description: Faktura tahrirlandi
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Faktura tahrirlandi
  *       404:
  *         $ref: '#/components/responses/NotFoundError'
  *       401:
  *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
  */
-router.put('/:id', authMiddleware, generalLimiter, async (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    message: 'Faktura tahrirlandi',
-  });
-});
+router.put('/:id', fakturaController.updateFaktura);
 
 /**
  * @swagger
@@ -300,84 +265,13 @@ router.put('/:id', authMiddleware, generalLimiter, async (req: Request, res: Res
  *     responses:
  *       200:
  *         description: Faktura o'chirildi
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 message:
- *                   type: string
- *                   example: Faktura o'chirildi
  *       404:
  *         $ref: '#/components/responses/NotFoundError'
  *       401:
  *         $ref: '#/components/responses/UnauthorizedError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
  */
-router.delete('/:id', authMiddleware, async (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    message: 'Faktura o\'chirildi',
-  });
-});
-
-/**
- * @swagger
- * /api/faktura/stats:
- *   get:
- *     summary: Faktura statistikasi
- *     description: Fakturalar bo'yicha umumiy statistika
- *     tags: [Faktura]
- *     security:
- *       - BearerAuth: []
- *     responses:
- *       200:
- *         description: Statistika
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 success:
- *                   type: boolean
- *                   example: true
- *                 data:
- *                   type: object
- *                   properties:
- *                     total:
- *                       type: integer
- *                       example: 100
- *                       description: Jami fakturalar
- *                     active:
- *                       type: integer
- *                       example: 80
- *                       description: Aktiv fakturalar
- *                     processed:
- *                       type: integer
- *                       example: 60
- *                       description: Qayta ishlangan
- *                     pending:
- *                       type: integer
- *                       example: 20
- *                       description: Kutilmoqda
- *                     totalSum:
- *                       type: number
- *                       example: 50000000.00
- *                       description: Umumiy summa
- */
-router.get('/stats', authMiddleware, async (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    data: {
-      total: 100,
-      active: 80,
-      processed: 60,
-      pending: 20,
-      totalSum: 50000000.00,
-    },
-  });
-});
+router.delete('/:id', fakturaController.deleteFaktura);
 
 export default router;

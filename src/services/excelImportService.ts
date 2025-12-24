@@ -18,7 +18,7 @@ export class ExcelImportService {
    */
   async importExcelFile(
     filePath: string,
-    userId: number
+    userId: number,
   ): Promise<{
     importId: number;
     checksCount: number;
@@ -50,28 +50,28 @@ export class ExcelImportService {
       // 4️⃣ Checks import
       logger.info(`📦 ${checks.length} ta chek import qilinmoqda...`);
       const checksImported = await this.dbManager.insertChecks(
-        checks.map(c => ({
+        checks.map((c) => ({
           creation_data_check: new Date().toISOString(),
           chek_raqam: c.chek_raqam,
           chek_summa: c.chek_summa,
           maxsulot_nomi: c.maxsulot_nomi,
-        }))
+        })),
       );
 
       // 5️⃣ Fakturalar import
       logger.info(`📋 ${fakturas.length} ta faktura import qilinmoqda...`);
       const fakturasImported = await this.dbManager.insertFakturas(
-        fakturas.map(f => ({
+        fakturas.map((f) => ({
           creation_data_faktura: new Date().toISOString(),
           mxik: f.mxik,
           ulchov: f.ulchov,
           faktura_summa: f.faktura_summa,
           faktura_miqdor: f.faktura_miqdor,
-        }))
+        })),
       );
 
-      // 6️⃣ Select_checks yaratish (FakturaProcessor)
-      logger.info('⚙️ Select_checks yaratilmoqda...');
+      // 6️⃣ select_checks yaratish (FakturaProcessor)
+      logger.info('⚙️ select_checks yaratilmoqda...');
       const processor = new FakturaProcessor();
       await processor.connect();
       const results = await processor.processAllFakturas();
@@ -83,7 +83,8 @@ export class ExcelImportService {
       await importRecord.update({
         status: 'completed',
         importedRows: checksImported + fakturasImported,
-        failedRows: (checks.length + fakturas.length) - (checksImported + fakturasImported),
+        failedRows:
+          checks.length + fakturas.length - (checksImported + fakturasImported),
         finishedAt: new Date(),
       });
 
@@ -95,7 +96,6 @@ export class ExcelImportService {
         fakturasCount: fakturasImported,
         selectChecksCount: results.length,
       };
-
     } catch (error) {
       await importRecord.update({
         status: 'failed',

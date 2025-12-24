@@ -43,7 +43,8 @@ export class InvoiceService {
       const page = await this.browserManager.initialize(false);
 
       // 4. Tax site'ga o'tish
-      const taxSiteUrl = process.env.TAX_SITE_URL || 'https://my.soliq.uz';
+      const taxSiteUrl =
+        process.env.TAX_SITE_URL || 'https://my3.soliq.uz/login';
       await page.goto(taxSiteUrl);
 
       // 5. Login

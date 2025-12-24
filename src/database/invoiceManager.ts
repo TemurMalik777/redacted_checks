@@ -305,7 +305,7 @@ export class InvoiceManager {
   }
 
   /**
-   * Select_checks dan aktiv itemlarni olish
+   * select_checks dan aktiv itemlarni olish
    */
   async getActiveSelectChecks(): Promise<any[]> {
     const result = await this.dbManager.query(`

@@ -10,6 +10,7 @@ import sequelize from '../../config/database';
 export interface FakturaAttributes {
   id: number;
   uuid: string;
+  postTerminalSeria: string; // 🆕 Post terminal seriyasi
   creation_data_faktura: string; // Faktra bazadan yartilgan vaqti
   mxik: string; // MXIK kodi
   ulchov: string; // O'lchov birligi (dona, kg, litr, ...)
@@ -27,6 +28,7 @@ export interface FakturaCreationAttributes
     FakturaAttributes,
     | 'id'
     | 'uuid'
+    | 'postTerminalSeria'
     | 'isActive'
     | 'relatedCheckId'
     | 'importId'
@@ -43,6 +45,7 @@ class Faktura
 {
   public id!: number;
   public uuid!: string;
+  public postTerminalSeria!: string; // 🆕 Post terminal seriyasi
   public creation_data_faktura!: string;
   public mxik!: string;
   public ulchov!: string;
@@ -94,6 +97,12 @@ Faktura.init(
       defaultValue: DataTypes.UUIDV4,
       allowNull: false,
       unique: true,
+    },
+    postTerminalSeria: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      defaultValue: '',
+      comment: 'Post terminal seriyasi',
     },
     creation_data_faktura: {
       type: DataTypes.STRING,

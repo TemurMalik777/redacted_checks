@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS faktura (
 );
 
 -- =====================================================
--- 3️⃣ SELECT_CHECKS TABLE (Hisob-kitoblar)
+-- 3️⃣ select_checks TABLE (Hisob-kitoblar)
 -- =====================================================
 CREATE TABLE IF NOT EXISTS select_checks (
     id SERIAL PRIMARY KEY,
@@ -106,7 +106,7 @@ BEFORE UPDATE ON faktura
 FOR EACH ROW
 EXECUTE FUNCTION update_updated_at_column();
 
--- Select_checks uchun trigger
+-- select_checks uchun trigger
 DROP TRIGGER IF EXISTS trg_update_select_checks_updated_at ON select_checks;
 CREATE TRIGGER trg_update_select_checks_updated_at
 BEFORE UPDATE ON select_checks
@@ -130,7 +130,7 @@ SELECT
     (SELECT COUNT(*) FROM faktura WHERE is_active = true) as active_fakturas,
     (SELECT COUNT(*) FROM faktura WHERE is_active = false) as inactive_fakturas,
     
-    -- Select_checks
+    -- select_checks
     (SELECT COUNT(*) FROM select_checks) as total_select_checks,
     (SELECT COUNT(*) FROM select_checks WHERE is_active = true) as active_select_checks,
     (SELECT COUNT(*) FROM select_checks WHERE is_active = false) as inactive_select_checks,

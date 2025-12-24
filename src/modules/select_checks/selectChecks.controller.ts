@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { SelectChecksService } from './selectChecks.service';
+import sequelize from '../../config/database';
 
 const service = new SelectChecksService();
 
@@ -7,6 +8,52 @@ const service = new SelectChecksService();
  * SelectChecksController
  */
 export class SelectChecksController {
+  /**
+   * 🆕 GENERATE - Faktura va cheklarni moslashtirish
+   * POST /api/select-checks/generate
+   */
+  async generate(req: Request, res: Response, next: NextFunction) {
+    try {
+      console.log('\n🚀 SELECT_CHECKS GENERATE boshlandi...\n');
+
+      const result = await service.processAllFakturas(sequelize);
+
+      res.status(200).json({
+        success: true,
+        message: `${result.results.length} ta select_check yaratildi`,
+        data: {
+          created: result.results.length,
+          processed: result.processed,
+          failed: result.failed,
+        },
+      });
+    } catch (error) {
+      console.error('❌ Generate xatosi:', error);
+      next(error);
+    }
+  }
+
+  /**
+   * 🆕 RESET - Barcha ma'lumotlarni qayta tiklash
+   * POST /api/select-checks/reset
+   */
+  async reset(req: Request, res: Response, next: NextFunction) {
+    try {
+      console.log('\n⚠️ SELECT_CHECKS RESET boshlandi...\n');
+
+      const result = await service.resetAll(sequelize);
+
+      res.status(200).json({
+        success: true,
+        message: 'Barcha ma\'lumotlar reset qilindi',
+        data: result,
+      });
+    } catch (error) {
+      console.error('❌ Reset xatosi:', error);
+      next(error);
+    }
+  }
+
   /**
    * Barcha select_checks'larni olish
    * GET /api/select-checks
@@ -196,12 +243,22 @@ export class SelectChecksController {
    * Automation uchun tayyor qilish
    * PATCH /api/select-checks/:id/mark-ready
    */
-  async markAsReadyForProcessing(id: number) {
+  async markAsReadyForProcessing(req: Request, res: Response, next: NextFunction) {
     try {
-      const selectCheck = await service.markAsReadyForProcessing(id);
-      return selectCheck;
+      const { id } = req.params;
+      const selectCheck = await service.markAsReadyForProcessing(parseInt(id));
+
+      res.status(200).json({
+        success: true,
+        message: 'Automation uchun tayyor qilindi',
+        data: selectCheck,
+      });
     } catch (error) {
-      throw error;
+      const message = error instanceof Error ? error.message : 'Xato';
+      res.status(400).json({
+        success: false,
+        message,
+      });
     }
   }
 
@@ -216,6 +273,47 @@ export class SelectChecksController {
       res.status(200).json({
         success: true,
         data: stats,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /**
+   * 🆕 Faktura-Check moslashtirish preview
+   * GET /api/select-checks/preview
+   */
+  async getPreview(req: Request, res: Response, next: NextFunction) {
+    try {
+      const fakturas = await service.getActiveFakturasRaw(sequelize);
+      
+      // Har bir faktura uchun potensial cheklar sonini ko'rsatish
+      const preview = [];
+      for (const faktura of fakturas.slice(0, 10)) { // Faqat 10 ta
+        const maxSumma = faktura.faktura_summa * (1 + service['TOLERANCE_PERCENT']);
+        const checks = await service.getUnprocessedChecksAfterDateRaw(
+          sequelize,
+          faktura.creation_data_faktura,
+          maxSumma
+        );
+        
+        preview.push({
+          faktura_id: faktura.id,
+          mxik: faktura.mxik,
+          faktura_summa: faktura.faktura_summa,
+          faktura_sana: faktura.creation_data_faktura,
+          available_checks: checks.length,
+          max_summa: maxSumma,
+        });
+      }
+
+      res.status(200).json({
+        success: true,
+        message: 'Preview ma\'lumotlari',
+        data: {
+          total_fakturas: fakturas.length,
+          preview,
+        },
       });
     } catch (error) {
       next(error);

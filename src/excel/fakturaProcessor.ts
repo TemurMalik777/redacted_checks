@@ -63,9 +63,7 @@ export class FakturaProcessor {
   /**
    * Processed=false cheklarni olish
    */
-  async getUnprocessedChecks(
-    limitSumma?: number,
-  ): Promise<CheckRecord[]> {
+  async getUnprocessedChecks(limitSumma?: number): Promise<CheckRecord[]> {
     let query = `
       SELECT chek_raqam, chek_summa, maxsulot_nomi
       FROM checks
@@ -169,8 +167,7 @@ export class FakturaProcessor {
       }
 
       if (totalSumma > fakturaSumma) {
-        const percentDiff =
-          ((totalSumma - fakturaSumma) / fakturaSumma) * 100;
+        const percentDiff = ((totalSumma - fakturaSumma) / fakturaSumma) * 100;
         if (percentDiff > 4) {
           logger.warning(
             `      ❌ Cheklar summasi ${percentDiff.toFixed(2)}% ortiq`,
@@ -178,11 +175,17 @@ export class FakturaProcessor {
           return [];
         }
         logger.info(
-          `      ✅ ${selectedChecks.length} ta chek, summa: ${totalSumma.toFixed(2)} (+${percentDiff.toFixed(2)}%)`,
+          `      ✅ ${
+            selectedChecks.length
+          } ta chek, summa: ${totalSumma.toFixed(2)} (+${percentDiff.toFixed(
+            2,
+          )}%)`,
         );
       } else {
         logger.info(
-          `      ✅ ${selectedChecks.length} ta chek, summa: ${totalSumma.toFixed(2)}`,
+          `      ✅ ${
+            selectedChecks.length
+          } ta chek, summa: ${totalSumma.toFixed(2)}`,
         );
       }
 
@@ -238,7 +241,9 @@ export class FakturaProcessor {
         );
       } else if (difference < 0) {
         logger.warning(
-          `      ⚠️ Ortiqcha miqdor: ${Math.abs(difference).toFixed(6)} - bu xato!`,
+          `      ⚠️ Ortiqcha miqdor: ${Math.abs(difference).toFixed(
+            6,
+          )} - bu xato!`,
         );
       }
 
@@ -295,7 +300,9 @@ export class FakturaProcessor {
         );
 
         logger.info(
-          `         • Chek ${item.check.chek_raqam}: ${item.checkSumma.toFixed(2)} sum, ${item.miqdor.toFixed(6)} miqdor`,
+          `         • Chek ${item.check.chek_raqam}: ${item.checkSumma.toFixed(
+            2,
+          )} sum, ${item.miqdor.toFixed(6)} miqdor`,
         );
       }
 
@@ -338,7 +345,9 @@ export class FakturaProcessor {
         const { mxik, ulchov, id: fakturaId, faktura_summa } = item;
 
         logger.info(
-          `${idx + 1}. MXIK: ${mxik} | Ulchov: ${ulchov} | Summa: ${faktura_summa.toLocaleString()}`,
+          `${
+            idx + 1
+          }. MXIK: ${mxik} | Ulchov: ${ulchov} | Summa: ${faktura_summa.toLocaleString()}`,
         );
 
         const results = await this.processFakturaItem(item);
@@ -357,7 +366,10 @@ export class FakturaProcessor {
           failedFakturas.delete(fakturaId);
         } else {
           logger.warning(`   ⚠️ Bu faktura uchun mos chek topilmadi`);
-          failedFakturas.set(fakturaId, (failedFakturas.get(fakturaId) || 0) + 1);
+          failedFakturas.set(
+            fakturaId,
+            (failedFakturas.get(fakturaId) || 0) + 1,
+          );
         }
         logger.info('');
       }
@@ -429,10 +441,14 @@ export class FakturaProcessor {
 
     logger.info(`✅ Jami qayta ishlangan: ${processed.rows[0].count} ta chek`);
     logger.info(
-      `⚠️ Qolgan processed=false: ${remaining.rows[0].count} ta chek (${Number(remaining.rows[0].summa).toLocaleString()} sum)`,
+      `⚠️ Qolgan processed=false: ${remaining.rows[0].count} ta chek (${Number(
+        remaining.rows[0].summa,
+      ).toLocaleString()} sum)`,
     );
     logger.info(
-      `⚠️ Qolgan aktiv fakturalar: ${remainingFakturas.rows[0].count} ta (${Number(remainingFakturas.rows[0].summa).toLocaleString()} sum)`,
+      `⚠️ Qolgan aktiv fakturalar: ${
+        remainingFakturas.rows[0].count
+      } ta (${Number(remainingFakturas.rows[0].summa).toLocaleString()} sum)`,
     );
 
     if (remaining.rows[0].count > 0) {
@@ -441,8 +457,8 @@ export class FakturaProcessor {
       );
       logger.info('   Sabablari:');
       logger.info('   - Faktura summasidan kam chek summasi');
-      logger.info('   - Chek summasi 4% dan ortiq bo\'lishi');
-      logger.info('   - Excel\'da faktura ma\'lumotlari yo\'qligi');
+      logger.info("   - Chek summasi 4% dan ortiq bo'lishi");
+      logger.info("   - Excel'da faktura ma'lumotlari yo'qligi");
     }
 
     logger.info('='.repeat(70) + '\n');

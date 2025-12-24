@@ -41,7 +41,7 @@ const upload = multer({
  *     description: Excel fayldan checks va fakturalarni import qilish va select_checks yaratish
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:

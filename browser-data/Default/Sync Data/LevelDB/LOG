@@ -1,2 +1,3 @@
-2025/12/16-16:44:38.948 79b0 Creating DB C:\Users\ASUS-PC\OneDrive\Рабочий стол\edit_checks\browser-data\Default\Sync Data\LevelDB since it was missing.
-2025/12/16-16:44:39.027 79b0 Reusing MANIFEST C:\Users\ASUS-PC\OneDrive\Рабочий стол\edit_checks\browser-data\Default\Sync Data\LevelDB/MANIFEST-000001
+2025/12/24-09:51:27.892 5c08 Reusing MANIFEST C:\Users\ASUS-PC\OneDrive\Рабочий стол\edit_checks\browser-data\Default\Sync Data\LevelDB/MANIFEST-000001
+2025/12/24-09:51:27.912 5c08 Recovering log #3
+2025/12/24-09:51:27.914 5c08 Reusing old log C:\Users\ASUS-PC\OneDrive\Рабочий стол\edit_checks\browser-data\Default\Sync Data\LevelDB/000003.log 

@@ -265,7 +265,7 @@ export class DbManager {
   }
 
   /**
-   * Select_checks tableiga ma'lumot qo'shish
+   * select_checks tableiga ma'lumot qo'shish
    */
   async insertSelectCheck(data: SelectCheckData): Promise<void> {
     const query = `

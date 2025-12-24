@@ -13,7 +13,7 @@ export class TaxSiteService {
 
   constructor() {
     this.browserManager = new BrowserManager();
-    this.baseUrl = process.env.TAX_SITE_URL || 'https://my3.soliq.uz/';
+    this.baseUrl = process.env.TAX_SITE_URL || 'https://my3.soliq.uz/login';
   }
 
   async initialize(headless: boolean = false): Promise<void> {

@@ -19,16 +19,14 @@ export class BrowserManager {
       // ❗ Bu Browser emas, BrowserContext qaytaradi
       this.browser = await chromium.launchPersistentContext(this.userDataDir, {
         headless,
-        viewport: { width: 1920, height: 1080 },
-        userAgent:
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        locale: 'uz-UZ',
-        timezoneId: 'Asia/Tashkent',
+        viewport: null, // native window size
         args: [
           '--disable-blink-features=AutomationControlled',
           '--disable-dev-shm-usage',
           '--no-sandbox',
+          '--start-maximized',
         ],
+        // ...
       });
 
       this.context = this.browser; // ✔ endi xato chiqmaydi
