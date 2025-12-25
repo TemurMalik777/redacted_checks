@@ -140,6 +140,9 @@ class FakturaService {
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
       const rows: any[] = xlsx.utils.sheet_to_json(worksheet);
 
+      // 🔍 DEBUG
+      console.log('Excel ustunlari:', Object.keys(rows[0] || {}));
+
       const results: ImportResult = {
         total: rows.length,
         imported: 0,
@@ -152,13 +155,23 @@ class FakturaService {
         const row = rows[i];
         const rowNumber = i + 2;
 
+        // ✅ TO'G'RILANGAN: Excel ustun nomlariga mos
+        const postTerminal =
+          row['post_terminal_serai'] || row['post_terminal_seria'];
+        const creationDate =
+          row['creation_date_faktura'] || row['creation_data_faktura'];
+        const mxik = row['mxik'];
+        const ulchov = row['ulchov'];
+        const fakturaSumma = row['faktura_summa'];
+        const fakturaMiqdor = row['faktura_miqdor'];
+
         const hasFakturaData =
-          row['post_terminal_seria'] &&
-          row['creation_date_faktura'] &&
-          row['mxik'] &&
-          row['ulchov'] &&
-          row['faktura_summa'] &&
-          row['faktura_miqdor'];
+          postTerminal &&
+          creationDate &&
+          mxik &&
+          ulchov &&
+          fakturaSumma !== undefined &&
+          fakturaMiqdor !== undefined;
 
         if (!hasFakturaData) {
           results.skipped++;
@@ -170,20 +183,19 @@ class FakturaService {
           continue;
         }
 
-        // SAVEPOINT yaratish
         const savepoint = `sp_row_${i}`;
         await sequelize.query(`SAVEPOINT ${savepoint}`, { transaction });
 
         try {
           await Faktura.create(
             {
-              creation_data_faktura: row['creation_date_faktura'],
-              mxik: row['mxik'],
-              ulchov: row['ulchov'],
-              fakturaSumma: parseFloat(row['faktura_summa']) || 0,
-              fakturaMiqdor: parseFloat(row['faktura_miqdor']) || 0,
+              postTerminalSeria: String(postTerminal),
+              creation_data_faktura: String(creationDate),
+              mxik: String(mxik),
+              ulchov: String(ulchov),
+              fakturaSumma: parseFloat(fakturaSumma) || 0,
+              fakturaMiqdor: parseFloat(fakturaMiqdor) || 0,
               isActive: true,
-              postTerminalSeria: row['post_terminal_seria'] || null,
               ...(importId && { importId }),
             },
             { transaction },
@@ -194,7 +206,6 @@ class FakturaService {
           });
           results.imported++;
         } catch (error: any) {
-          // Faqat shu qatorni rollback qilish
           await sequelize.query(`ROLLBACK TO SAVEPOINT ${savepoint}`, {
             transaction,
           });
@@ -216,16 +227,6 @@ class FakturaService {
       await transaction.rollback();
       this.cleanupFile(filePath);
       throw error;
-    }
-  }
-
-  private cleanupFile(filePath: string) {
-    if (fs.existsSync(filePath)) {
-      try {
-        fs.unlinkSync(filePath);
-      } catch (e) {
-        console.error("Fayl o'chirishda xatolik:", e);
-      }
     }
   }
 
@@ -292,6 +293,9 @@ class FakturaService {
   /**
    * Bog'lanmagan fakturalarni olish
    */
+  /**
+   * Bog'lanmagan fakturalarni olish
+   */
   async getUnlinkedFakturas(page: number = 1, limit: number = 20) {
     const offset = (page - 1) * limit;
 
@@ -315,6 +319,20 @@ class FakturaService {
       },
     };
   }
+
+  /**
+   * Faylni o'chirish (private helper)
+   */
+  private cleanupFile(filePath: string): void {
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+      } catch (e) {
+        console.error("Fayl o'chirishda xatolik:", e);
+      }
+    }
+  }
 }
+
 
 export default new FakturaService();

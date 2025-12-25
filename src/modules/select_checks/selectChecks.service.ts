@@ -1,7 +1,7 @@
-import { Op, WhereOptions } from 'sequelize';
+import { Op } from 'sequelize';
 import Decimal from 'decimal.js';
+import logger from '@/utils/logger';
 import SelectCheck, {
-  SelectCheckAttributes,
   SelectCheckCreationAttributes,
 } from './selectChecks.model';
 
@@ -18,13 +18,13 @@ interface CheckRecord {
 
 interface FakturaRecord {
   id: number;
-  postTerminalSeria: string;  // Post terminal seriyasi
+  post_terminal_seria: string;
   mxik: string;
   ulchov: string;
   faktura_summa: number;
   faktura_miqdor: number;
   is_active: boolean;
-  creation_data_faktura: Date;  // DATA, not DATE
+  creation_data_faktura: Date;
 }
 
 interface CombinationResult {
@@ -32,39 +32,31 @@ interface CombinationResult {
   totalSumma: Decimal;
 }
 
-interface ProcessResult {
-  faktura_id: number;
-  mxik: string;
-  ulchov: string;
-  faktura_summa: number;
-  faktura_miqdor: number;
-  chek_raqam: string;
-  maxsulot_nomi?: string;
-  chek_summa: number;
-  miqdor: number;
-  umumiy_chek_summa: number;
-  bir_birlik: number;
-  is_active: boolean;
-}
-
 /**
- * SelectChecksService - Ma'lumotlar bazasi bilan ishlash
+ * SelectChecksService - Faktura va Check'larni moslashtirish
  */
 export class SelectChecksService {
-  // TOLERANS: 1% (Python da 4% edi, endi 1%)
+  // TOLERANS: 1% oshishga ruxsat
   private readonly TOLERANCE_PERCENT = 0.01;
 
   // =============================================
-  // FAKTURA-CHECK MOSLASHTIRISH (YANGI)
+  // FAKTURA-CHECK MOSLASHTIRISH
   // =============================================
 
   /**
    * Aktiv fakturalarni SANA BO'YICHA tartiblangan holda olish
-   * Raw SQL query - Sequelize model bo'lmasa
    */
   async getActiveFakturasRaw(sequelize: any): Promise<FakturaRecord[]> {
     const [results] = await sequelize.query(`
-      SELECT id, post_terminal_seria as "postTerminalSeria", mxik, ulchov, faktura_summa, faktura_miqdor, is_active, creation_data_faktura
+      SELECT 
+        id, 
+        post_terminal_seria, 
+        mxik, 
+        ulchov, 
+        faktura_summa, 
+        faktura_miqdor, 
+        is_active, 
+        creation_data_faktura
       FROM faktura
       WHERE is_active = true
       ORDER BY creation_data_faktura ASC, faktura_summa DESC
@@ -74,19 +66,22 @@ export class SelectChecksService {
   }
 
   /**
-   * Processed=false cheklarni olish
-   * Faqat faktura sanasidan KEYIN yaratilgan cheklar
+   * Processed=false va faktura sanasidan KEYIN yaratilgan cheklarni olish
    */
   async getUnprocessedChecksAfterDateRaw(
     sequelize: any,
     fakturaSana: Date,
-    limitSumma?: number
+    limitSumma?: number,
   ): Promise<CheckRecord[]> {
     let query = `
-      SELECT chek_raqam, chek_summa, maxsulot_nomi, creation_date_check
+      SELECT 
+        chek_raqam, 
+        chek_summa, 
+        maxsulot_nomi, 
+        creation_date_check
       FROM checks
       WHERE processed = false
-        AND creation_date_check >= :fakturaSana
+        AND creation_date_check > :fakturaSana
     `;
 
     const replacements: any = { fakturaSana };
@@ -104,15 +99,15 @@ export class SelectChecksService {
 
   /**
    * Eng optimal cheklar kombinatsiyasini topish
-   * 
+   *
    * QOIDALAR:
-   * - Cheklar summasi faktura summasidan KAM bo'lishi MUMKIN EMAS
-   * - Teng bo'lishi kerak YOKI 1% gacha ortiq bo'lishi mumkin
+   * - Cheklar summasi faktura summasidan KAM bo'lmasligi kerak
+   * - Teng yoki 1% gacha ortiq bo'lishi mumkin
    */
   findBestChecksCombination(
     targetSumma: number,
     maxSumma: number,
-    availableChecks: CheckRecord[]
+    availableChecks: CheckRecord[],
   ): CombinationResult {
     const target = new Decimal(targetSumma);
     const max = new Decimal(maxSumma);
@@ -121,11 +116,15 @@ export class SelectChecksService {
     for (const check of availableChecks) {
       const checkSumma = new Decimal(check.chek_summa);
       if (checkSumma.gte(target) && checkSumma.lte(max)) {
+        logger.debug('Bitta chek topildi', {
+          chek_raqam: check.chek_raqam,
+          summa: checkSumma.toNumber(),
+        });
         return { checks: [check], totalSumma: checkSumma };
       }
     }
 
-    // 2-strategiya: Bir necha chekni yig'ib olish (greedy)
+    // 2-strategiya: Bir necha chekni yig'ib olish (greedy algorithm)
     const selectedChecks: CheckRecord[] = [];
     let totalSumma = new Decimal(0);
 
@@ -136,18 +135,123 @@ export class SelectChecksService {
         selectedChecks.push(check);
         totalSumma = totalSumma.plus(checkSumma);
 
+        // Target ga yetdikmi tekshirish
         if (totalSumma.gte(target)) {
+          logger.debug("Ko'p chek kombinatsiyasi topildi", {
+            count: selectedChecks.length,
+            total: totalSumma.toNumber(),
+          });
           return { checks: selectedChecks, totalSumma };
         }
       }
     }
 
-    // Faqat target dan teng yoki ko'p bo'lsa qaytaramiz
-    if (totalSumma.gte(target)) {
-      return { checks: selectedChecks, totalSumma };
+    // Target dan kam bo'lsa, bo'sh qaytaramiz
+    if (totalSumma.lt(target)) {
+      logger.debug("Yetarli summa to'planmadi", {
+        target: target.toNumber(),
+        collected: totalSumma.toNumber(),
+      });
+      return { checks: [], totalSumma: new Decimal(0) };
     }
 
-    return { checks: [], totalSumma: new Decimal(0) };
+    return { checks: selectedChecks, totalSumma };
+  }
+
+  /**
+   * 🔥 TO'G'RI MIQDOR HISOBLASH
+   *
+   * FORMULA:
+   * 1. bir_birlik = total_summa / faktura_miqdor
+   * 2. miqdor = check_summa / bir_birlik
+   * 3. 6 xonali aniqlikda PASTGA yaxlitlash
+   * 4. Qoldiqni eng katta chekka qo'shish
+   */
+  calculateMiqdorlar(
+    checks: CheckRecord[],
+    totalSumma: Decimal,
+    fakturaMiqdor: Decimal,
+  ): { check: CheckRecord; checkSumma: Decimal; miqdor: Decimal }[] {
+    // 1. Bir birlik narxini hisoblash
+    // bir_birlik = total_summa / faktura_miqdor
+    const birBirlik = totalSumma.div(fakturaMiqdor);
+
+    logger.debug('Bir birlik narxi', {
+      total_summa: totalSumma.toNumber(),
+      faktura_miqdor: fakturaMiqdor.toNumber(),
+      bir_birlik: birBirlik.toNumber(),
+    });
+
+    // 2. Har bir chek uchun miqdor hisoblash
+    const checkMiqdorlar: {
+      check: CheckRecord;
+      checkSumma: Decimal;
+      miqdor: Decimal;
+    }[] = [];
+    let totalMiqdorUsed = new Decimal(0);
+
+    for (const check of checks) {
+      const checkSumma = new Decimal(check.chek_summa);
+
+      // 🔥 TO'G'RI FORMULA: miqdor = check_summa / bir_birlik
+      let miqdor = checkSumma.div(birBirlik);
+
+      // 6 xonali aniqlikda, PASTGA yaxlitlash (floor)
+      // Masalan: 12.345678 → 12.345678 * 1000000 = 12345678 → floor() = 12345678 → / 1000000 = 12.345678
+      // Masalan: 12.3456789 → 12345678.9 → floor() = 12345678 → 12.345678
+      miqdor = miqdor.times(1000000).floor().div(1000000);
+
+      checkMiqdorlar.push({ check, checkSumma, miqdor });
+      totalMiqdorUsed = totalMiqdorUsed.plus(miqdor);
+
+      logger.debug('Chek miqdori hisoblandi', {
+        chek_raqam: check.chek_raqam,
+        chek_summa: checkSumma.toNumber(),
+        bir_birlik: birBirlik.toNumber(),
+        miqdor: miqdor.toNumber(),
+      });
+    }
+
+    // 3. Farqni eng katta summali chekka qo'shish
+    const difference = fakturaMiqdor.minus(totalMiqdorUsed);
+
+    if (difference.gt(0) && checkMiqdorlar.length > 0) {
+      // Eng katta summali chekni topish
+      let maxIndex = 0;
+      let maxSummaVal = new Decimal(0);
+
+      checkMiqdorlar.forEach((item, idx) => {
+        if (item.checkSumma.gt(maxSummaVal)) {
+          maxSummaVal = item.checkSumma;
+          maxIndex = idx;
+        }
+      });
+
+      // Qoldiqni qo'shish
+      const oldMiqdor = checkMiqdorlar[maxIndex].miqdor;
+      checkMiqdorlar[maxIndex].miqdor = oldMiqdor.plus(difference);
+
+      logger.debug("Qoldiq eng katta chekka qo'shildi", {
+        chek_raqam: checkMiqdorlar[maxIndex].check.chek_raqam,
+        old_miqdor: oldMiqdor.toNumber(),
+        difference: difference.toNumber(),
+        new_miqdor: checkMiqdorlar[maxIndex].miqdor.toNumber(),
+      });
+    }
+
+    // 4. Jami miqdorni tekshirish
+    const finalTotal = checkMiqdorlar.reduce(
+      (sum, item) => sum.plus(item.miqdor),
+      new Decimal(0),
+    );
+
+    logger.debug('Miqdor taqsimoti yakunlandi', {
+      faktura_miqdor: fakturaMiqdor.toNumber(),
+      total_calculated: finalTotal.toNumber(),
+      difference: fakturaMiqdor.minus(finalTotal).toNumber(),
+    });
+
+    return checkMiqdorlar;
   }
 
   /**
@@ -155,7 +259,7 @@ export class SelectChecksService {
    */
   async processFakturaItem(
     sequelize: any,
-    fakturaItem: FakturaRecord
+    fakturaItem: FakturaRecord,
   ): Promise<SelectCheck[]> {
     const transaction = await sequelize.transaction();
 
@@ -165,35 +269,49 @@ export class SelectChecksService {
       const ulchov = fakturaItem.ulchov;
       const fakturaSumma = new Decimal(fakturaItem.faktura_summa);
       const fakturaMiqdor = new Decimal(fakturaItem.faktura_miqdor);
-      const fakturaSana = fakturaItem.creation_data_faktura;  // DATA, not DATE
 
-      // 1% tolerans
+      // ✅ Date obyektiga aylantirish
+      const fakturaSanaDate =
+        fakturaItem.creation_data_faktura instanceof Date
+          ? fakturaItem.creation_data_faktura
+          : new Date(fakturaItem.creation_data_faktura);
+
+      // ✅ String formatga o'tkazish (model uchun)
+      const fakturaSanaStr = fakturaSanaDate.toLocaleDateString('en-GB'); // DD/MM/YYYY
+
       const maxSumma = fakturaSumma.times(1 + this.TOLERANCE_PERCENT);
 
       console.log(`   📋 Faktura: MXIK=${mxik}, Ulchov=${ulchov}`);
-      console.log(`      📅 Sana: ${fakturaSana}`);
-      console.log(`      💰 Target: ${fakturaSumma.toFixed(2)}, Max: ${maxSumma.toFixed(2)} (+${this.TOLERANCE_PERCENT * 100}%)`);
+      console.log(`      📅 Sana: ${fakturaSanaStr}`);
+      console.log(
+        `      💰 Target: ${fakturaSumma.toFixed(2)}, Max: ${maxSumma.toFixed(
+          2,
+        )}`,
+      );
 
-      // Faqat faktura sanasidan KEYIN yaratilgan cheklar
+      // ✅ Date obyektini SQL query ga o'tkazamiz
       const allChecks = await this.getUnprocessedChecksAfterDateRaw(
         sequelize,
-        fakturaSana,
-        maxSumma.toNumber()
+        fakturaSanaDate, // Date obyekti
+        maxSumma.toNumber(),
       );
 
       if (allChecks.length === 0) {
-        console.log(`      ⚠️ Mos cheklar topilmadi (sana >= ${fakturaSana})`);
+        console.log(
+          `      ⚠️ Mos cheklar topilmadi (sana >= ${fakturaSanaStr})`,
+        );
         await transaction.rollback();
         return [];
       }
 
       console.log(`      📦 ${allChecks.length} ta mos chek topildi`);
 
-      const { checks: selectedChecks, totalSumma } = this.findBestChecksCombination(
-        fakturaSumma.toNumber(),
-        maxSumma.toNumber(),
-        allChecks
-      );
+      const { checks: selectedChecks, totalSumma } =
+        this.findBestChecksCombination(
+          fakturaSumma.toNumber(),
+          maxSumma.toNumber(),
+          allChecks,
+        );
 
       if (selectedChecks.length === 0) {
         console.log(`      ⚠️ Optimal kombinatsiya topilmadi`);
@@ -209,22 +327,42 @@ export class SelectChecksService {
 
       // Foiz farqini tekshirish
       if (totalSumma.gt(fakturaSumma)) {
-        const percentDiff = totalSumma.minus(fakturaSumma).div(fakturaSumma).times(100);
+        const percentDiff = totalSumma
+          .minus(fakturaSumma)
+          .div(fakturaSumma)
+          .times(100);
         if (percentDiff.gt(this.TOLERANCE_PERCENT * 100)) {
-          console.log(`      ❌ Cheklar summasi ${percentDiff.toFixed(2)}% ortiq`);
+          console.log(
+            `      ❌ Cheklar summasi ${percentDiff.toFixed(2)}% ortiq`,
+          );
           await transaction.rollback();
           return [];
         }
-        console.log(`      ✅ ${selectedChecks.length} ta chek, summa: ${totalSumma.toFixed(2)} (+${percentDiff.toFixed(2)}%)`);
+        console.log(
+          `      ✅ ${
+            selectedChecks.length
+          } ta chek, summa: ${totalSumma.toFixed(2)} (+${percentDiff.toFixed(
+            2,
+          )}%)`,
+        );
       } else {
-        console.log(`      ✅ ${selectedChecks.length} ta chek, summa: ${totalSumma.toFixed(2)}`);
+        console.log(
+          `      ✅ ${
+            selectedChecks.length
+          } ta chek, summa: ${totalSumma.toFixed(2)}`,
+        );
       }
 
-      // Bir birlik narxini hisoblash
-      const birBirlik = totalSumma.div(fakturaMiqdor).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+      const birBirlik = totalSumma
+        .div(fakturaMiqdor)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 
-      // Har bir chek uchun miqdor hisoblash
-      const checkMiqdorlar: { check: CheckRecord; checkSumma: Decimal; miqdor: Decimal }[] = [];
+      // Miqdorlarni hisoblash
+      const checkMiqdorlar: {
+        check: CheckRecord;
+        checkSumma: Decimal;
+        miqdor: Decimal;
+      }[] = [];
       let totalMiqdorUsed = new Decimal(0);
 
       for (const check of selectedChecks) {
@@ -237,7 +375,7 @@ export class SelectChecksService {
         totalMiqdorUsed = totalMiqdorUsed.plus(miqdor);
       }
 
-      // Farqni eng katta chekka qo'shish
+      // Farqni tuzatish
       const difference = fakturaMiqdor.minus(totalMiqdorUsed);
       if (difference.gt(0) && checkMiqdorlar.length > 0) {
         let maxIndex = 0;
@@ -248,60 +386,70 @@ export class SelectChecksService {
             maxIndex = idx;
           }
         });
-        checkMiqdorlar[maxIndex].miqdor = checkMiqdorlar[maxIndex].miqdor.plus(difference);
+        checkMiqdorlar[maxIndex].miqdor =
+          checkMiqdorlar[maxIndex].miqdor.plus(difference);
       }
 
-      // Natijalarni saqlash
+      // ✅ SelectCheck yaratish
       const results: SelectCheck[] = [];
 
       for (const item of checkMiqdorlar) {
         const { check, checkSumma, miqdor } = item;
 
-        // SelectCheck yaratish (Sequelize model orqali)
-        const selectCheck = await SelectCheck.create({
-          creationDataFaktura: fakturaSana.toString(),
-          postTerminalSeria: fakturaItem.postTerminalSeria, // 🆕 Post terminal seriyasi (fakturadan)
-          mxik,
-          ulchov,
-          fakturaSumma: fakturaSumma.toNumber(),
-          fakturaMiqdor: fakturaMiqdor.toNumber(),
-          chekRaqam: check.chek_raqam,
-          maxsulotNomi: check.maxsulot_nomi || '',
-          chekSumma: checkSumma.toNumber(),
-          miqdor: miqdor.toNumber(),
-          umumiyChekSumma: totalSumma.toNumber(),
-          birBirlik: birBirlik.toNumber(),
-          isActive: false,
-          processed: false,
-          automationStatus: 'pending',
-        }, { transaction });
+        // ✅ String formatda saqlaymiz
+        const selectCheck = await SelectCheck.create(
+          {
+            creationDataFaktura: fakturaSanaStr, // ✅ String format
+            creation_date_check: check.creation_date_check
+              ? new Date(check.creation_date_check).toLocaleDateString('en-GB')
+              : null, // ✅ String format yoki null
+            postTerminalSeria: fakturaItem.post_terminal_seria,
+            mxik,
+            ulchov,
+            fakturaSumma: fakturaSumma.toNumber(),
+            fakturaMiqdor: fakturaMiqdor.toNumber(),
+            chekRaqam: check.chek_raqam,
+            maxsulotNomi: check.maxsulot_nomi || '',
+            chekSumma: checkSumma.toNumber(),
+            miqdor: miqdor.toNumber(),
+            umumiyChekSumma: totalSumma.toNumber(),
+            birBirlik: birBirlik.toNumber(),
+            isActive: false,
+            processed: false,
+            automationStatus: 'pending',
+          },
+          { transaction },
+        );
 
         results.push(selectCheck);
 
-        // Chekni processed=true qilish
+        // Chekni processed qilish
         await sequelize.query(
           'UPDATE checks SET processed = true WHERE chek_raqam = :chekRaqam',
-          { 
+          {
             replacements: { chekRaqam: check.chek_raqam },
-            transaction 
-          }
+            transaction,
+          },
         );
 
-        console.log(`         • Chek ${check.chek_raqam}: ${checkSumma.toFixed(2)} sum, ${miqdor.toFixed(6)} miqdor`);
+        console.log(
+          `         • Chek ${check.chek_raqam}: ${checkSumma.toFixed(
+            2,
+          )} sum, ${miqdor.toFixed(6)} miqdor`,
+        );
       }
 
-      // Fakturani is_active=false qilish
+      // Fakturani deaktiv qilish
       await sequelize.query(
         'UPDATE faktura SET is_active = false WHERE id = :fakturaId',
-        { 
+        {
           replacements: { fakturaId },
-          transaction 
-        }
+          transaction,
+        },
       );
 
       await transaction.commit();
       return results;
-
     } catch (error) {
       await transaction.rollback();
       console.error(`❌ processFakturaItem xatosi:`, error);
@@ -311,17 +459,16 @@ export class SelectChecksService {
 
   /**
    * Barcha aktiv fakturalarni qayta ishlash
-   * SANA BO'YICHA tartiblangan (eski fakturalardan boshlab)
    */
   async processAllFakturas(sequelize: any): Promise<{
     results: SelectCheck[];
     processed: number;
     failed: number;
   }> {
-    console.log('\n' + '='.repeat(70));
-    console.log('🔄 FAKTURA QAYTA ISHLASH (SANA BO\'YICHA)');
-    console.log(`📊 Tolerans: ${this.TOLERANCE_PERCENT * 100}%`);
-    console.log('='.repeat(70) + '\n');
+    logger.info('═══════════════════════════════════════════════');
+    logger.info('🔄 FAKTURA QAYTA ISHLASH BOSHLANDI');
+    logger.info(`📊 Tolerans: ${this.TOLERANCE_PERCENT * 100}%`);
+    logger.info('═══════════════════════════════════════════════');
 
     const allResults: SelectCheck[] = [];
     const maxAttempts = 3;
@@ -330,25 +477,32 @@ export class SelectChecksService {
     let totalFailed = 0;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      console.log(`\n🔁 Urinish #${attempt}/${maxAttempts}`);
-      console.log('-'.repeat(70));
+      logger.info(`🔁 Urinish #${attempt}/${maxAttempts}`);
 
       const fakturaItems = await this.getActiveFakturasRaw(sequelize);
 
       if (fakturaItems.length === 0) {
-        console.log(`✅ Aktiv faktura topilmadi`);
+        logger.info('✅ Aktiv faktura topilmadi');
         break;
       }
 
-      console.log(`📋 ${fakturaItems.length} ta aktiv faktura (sana bo'yicha tartiblangan)\n`);
+      logger.info(
+        `📋 ${fakturaItems.length} ta aktiv faktura (sana bo'yicha tartiblangan)`,
+      );
 
       let processedCount = 0;
 
       for (let idx = 0; idx < fakturaItems.length; idx++) {
         const item = fakturaItems[idx];
-        const sanaStr = new Date(item.creation_data_faktura).toLocaleDateString('uz-UZ');
+        const sanaStr = new Date(item.creation_data_faktura).toLocaleDateString(
+          'uz-UZ',
+        );
 
-        console.log(`${idx + 1}. 📅 ${sanaStr} | MXIK: ${item.mxik} | Summa: ${item.faktura_summa.toLocaleString()}`);
+        logger.info(
+          `${idx + 1}. 📅 ${sanaStr} | MXIK: ${
+            item.mxik
+          } | Summa: ${item.faktura_summa.toLocaleString()}`,
+        );
 
         try {
           const results = await this.processFakturaItem(sequelize, item);
@@ -357,25 +511,28 @@ export class SelectChecksService {
             allResults.push(...results);
             processedCount += results.length;
             totalProcessed += results.length;
-            console.log(`   ✅ ${results.length} ta chek qayta ishlandi`);
+            logger.info(`   ✅ ${results.length} ta chek qayta ishlandi`);
             failedFakturas.delete(item.id);
           } else {
-            console.log(`   ⚠️ Mos chek topilmadi`);
+            logger.warn('   ⚠️ Mos chek topilmadi');
             failedFakturas.set(item.id, (failedFakturas.get(item.id) || 0) + 1);
             totalFailed++;
           }
         } catch (error) {
-          console.log(`   ❌ Xatolik:`, error);
+          logger.error('   ❌ Xatolik', {
+            error: error instanceof Error ? error.message : String(error),
+          });
           failedFakturas.set(item.id, (failedFakturas.get(item.id) || 0) + 1);
           totalFailed++;
         }
-        console.log();
       }
 
-      console.log(`📊 ${attempt}-urinish: ${processedCount} ta chek qayta ishlandi`);
+      logger.info(
+        `📊 ${attempt}-urinish: ${processedCount} ta chek qayta ishlandi`,
+      );
 
       if (processedCount === 0 && attempt < maxAttempts) {
-        console.log('⚠️ Hech narsa qayta ishlanmadi, keyingi urinish...');
+        logger.warn('⚠️ Hech narsa qayta ishlanmadi, keyingi urinish...');
       }
     }
 
@@ -384,20 +541,21 @@ export class SelectChecksService {
       if (attempts >= maxAttempts) {
         await sequelize.query(
           'UPDATE faktura SET is_active = false WHERE id = :fakturaId',
-          { replacements: { fakturaId } }
+          { replacements: { fakturaId } },
         );
-        console.log(`⛔ Faktura #${fakturaId} → is_active=false (${maxAttempts} urinishdan keyin)`);
+        logger.warn(
+          `⛔ Faktura #${fakturaId} → is_active=false (${maxAttempts} urinishdan keyin)`,
+        );
       }
     }
 
-    // Yakuniy hisobot
-    console.log('\n' + '='.repeat(70));
-    console.log('📈 YAKUNIY NATIJA');
-    console.log('='.repeat(70));
-    console.log(`✅ Jami yaratilgan select_checks: ${allResults.length}`);
-    console.log(`✅ Muvaffaqiyatli: ${totalProcessed}`);
-    console.log(`❌ Muvaffaqiyatsiz: ${totalFailed}`);
-    console.log('='.repeat(70) + '\n');
+    logger.info('═══════════════════════════════════════════════');
+    logger.info('📈 YAKUNIY NATIJA');
+    logger.info('═══════════════════════════════════════════════');
+    logger.info(`✅ Jami yaratilgan select_checks: ${allResults.length}`);
+    logger.info(`✅ Muvaffaqiyatli: ${totalProcessed}`);
+    logger.info(`❌ Muvaffaqiyatsiz: ${totalFailed}`);
+    logger.info('═══════════════════════════════════════════════');
 
     return {
       results: allResults,
@@ -414,21 +572,21 @@ export class SelectChecksService {
     checksReset: number;
     fakturasReset: number;
   }> {
-    console.log('\n⚠️ RESET JARAYONI...');
+    logger.warn('⚠️ RESET JARAYONI BOSHLANDI');
 
-    // select_checks tozalash
-    const selectChecksDeleted = await SelectCheck.destroy({ where: {}, truncate: true });
-    console.log(`   🗑️ select_checks tozalandi`);
+    const selectChecksDeleted = await SelectCheck.destroy({
+      where: {},
+      truncate: true,
+    });
+    logger.info('🗑️ select_checks tozalandi');
 
-    // Barcha cheklar processed=false
-    const [, checksResult] = await sequelize.query('UPDATE checks SET processed = false');
-    console.log(`   ♻️ Barcha cheklar processed=false`);
+    await sequelize.query('UPDATE checks SET processed = false');
+    logger.info('♻️ Barcha cheklar processed=false');
 
-    // Barcha fakturalar is_active=true
-    const [, fakturasResult] = await sequelize.query('UPDATE faktura SET is_active = true');
-    console.log(`   ♻️ Barcha fakturalar is_active=true`);
+    await sequelize.query('UPDATE faktura SET is_active = true');
+    logger.info('♻️ Barcha fakturalar is_active=true');
 
-    console.log('✅ Reset yakunlandi\n');
+    logger.info('✅ Reset yakunlandi');
 
     return {
       selectChecksDeleted: selectChecksDeleted || 0,
@@ -438,12 +596,9 @@ export class SelectChecksService {
   }
 
   // =============================================
-  // MAVJUD METODLAR (O'zgarishsiz)
+  // MAVJUD CRUD METODLAR
   // =============================================
 
-  /**
-   * Barcha select_checks'larni olish (pagination + filtering)
-   */
   async getAll(filters: {
     page?: number;
     limit?: number;
@@ -466,20 +621,11 @@ export class SelectChecksService {
     } = filters;
 
     const offset = (page - 1) * limit;
-
     const where: any = {};
 
-    if (typeof isActive === 'boolean') {
-      where.isActive = isActive;
-    }
-
-    if (typeof processed === 'boolean') {
-      where.processed = processed;
-    }
-
-    if (automationStatus) {
-      where.automationStatus = automationStatus;
-    }
+    if (typeof isActive === 'boolean') where.isActive = isActive;
+    if (typeof processed === 'boolean') where.processed = processed;
+    if (automationStatus) where.automationStatus = automationStatus;
 
     if (search) {
       where[Op.or] = [
@@ -507,144 +653,46 @@ export class SelectChecksService {
     };
   }
 
-  /**
-   * Bitta select_check'ni ID bo'yicha olish
-   */
   async getById(id: number) {
     const selectCheck = await SelectCheck.findByPk(id);
-
-    if (!selectCheck) {
-      throw new Error('SelectCheck topilmadi');
-    }
-
+    if (!selectCheck) throw new Error('SelectCheck topilmadi');
     return selectCheck;
   }
 
-  /**
-   * UUID bo'yicha olish
-   */
-  async getByUuid(uuid: string) {
-    const selectCheck = await SelectCheck.findOne({
-      where: { uuid },
-    });
-
-    if (!selectCheck) {
-      throw new Error('SelectCheck topilmadi');
-    }
-
-    return selectCheck;
-  }
-
-  /**
-   * Check raqami bo'yicha olish
-   */
-  async getByCheckNumber(chekRaqam: string) {
-    const selectChecks = await SelectCheck.findAll({
-      where: { chekRaqam },
-    });
-
-    return selectChecks;
-  }
-
-  /**
-   * MXIK bo'yicha olish
-   */
-  async getByMxik(mxik: string) {
-    const selectChecks = await SelectCheck.findAll({
-      where: { mxik },
-    });
-
-    return selectChecks;
-  }
-
-  /**
-   * Yangi select_check yaratish
-   */
   async create(data: SelectCheckCreationAttributes) {
-    const selectCheck = await SelectCheck.create(data);
-    return selectCheck;
+    return await SelectCheck.create(data);
   }
 
-  /**
-   * Ko'p select_check'larni bir vaqtda yaratish
-   */
-  async bulkCreate(dataArray: SelectCheckCreationAttributes[]) {
-    const selectChecks = await SelectCheck.bulkCreate(dataArray, {
-      validate: true,
-      returning: true,
-    });
-
-    return {
-      data: selectChecks,
-      count: selectChecks.length,
-      message: `${selectChecks.length} ta select_check yaratildi`,
-    };
-  }
-
-  /**
-   * Select_check'ni yangilash
-   */
   async update(id: number, data: Partial<SelectCheckCreationAttributes>) {
     const selectCheck = await this.getById(id);
-
     await selectCheck.update(data);
     return selectCheck;
   }
 
-  /**
-   * Select_check'ni o'chirish
-   */
   async delete(id: number) {
     const selectCheck = await this.getById(id);
     await selectCheck.destroy();
     return { message: "SelectCheck o'chirildi" };
   }
 
-  /**
-   * Ko'p select_check'larni o'chirish
-   */
   async bulkDelete(ids: number[]) {
     const deletedCount = await SelectCheck.destroy({
-      where: {
-        id: {
-          [Op.in]: ids,
-        },
-      },
+      where: { id: { [Op.in]: ids } },
     });
-
-    return {
-      deletedCount,
-      message: `${deletedCount} ta select_check o'chirildi`,
-    };
+    return { deletedCount, message: `${deletedCount} ta o'chirildi` };
   }
 
-  /**
-   * Ko'p select_check'larning holatini yangilash
-   */
   async bulkUpdateStatus(
     ids: number[],
     automationStatus: 'pending' | 'processing' | 'completed' | 'failed',
   ) {
     const [updatedCount] = await SelectCheck.update(
       { automationStatus },
-      {
-        where: {
-          id: {
-            [Op.in]: ids,
-          },
-        },
-      },
+      { where: { id: { [Op.in]: ids } } },
     );
-
-    return {
-      updatedCount,
-      message: `${updatedCount} ta select_check holati yangilandi`,
-    };
+    return { updatedCount, message: `${updatedCount} ta yangilandi` };
   }
 
-  /**
-   * isActive'ni o'zgartirish (toggle)
-   */
   async toggleActive(id: number) {
     const selectCheck = await this.getById(id);
     selectCheck.isActive = !selectCheck.isActive;
@@ -652,9 +700,6 @@ export class SelectChecksService {
     return selectCheck;
   }
 
-  /**
-   * Processed'ni true qilish
-   */
   async markAsProcessed(id: number) {
     const selectCheck = await this.getById(id);
     selectCheck.processed = true;
@@ -663,93 +708,29 @@ export class SelectChecksService {
     return selectCheck;
   }
 
-  /**
-   * Automation uchun tayyor record'larni olish
-   */
-  async getReadyForAutomation(limit: number = 10) {
-    const selectChecks = await SelectCheck.findAll({
-      where: {
-        isActive: false,
-        processed: false,
-        chekRaqam: { [Op.not]: null },
-        mxik: { [Op.not]: null },
-        miqdor: { [Op.gt]: 0 },
-        fakturaSumma: { [Op.gt]: 0 },
-      },
-      limit,
-      order: [['createdAt', 'ASC']],
-    });
-
-    return selectChecks;
-  }
-
-  /**
-   * Xatolik bilan yakunlangan record'larni olish
-   */
-  async getFailedRecords(limit: number = 20) {
-    const selectChecks = await SelectCheck.findAll({
-      where: {
-        automationStatus: 'failed',
-        errorMessage: { [Op.not]: null },
-      },
-      limit,
-      order: [['updatedAt', 'DESC']],
-    });
-
-    return selectChecks;
-  }
-
-  /**
-   * Error message'ni yangilash
-   */
-  async setError(id: number, errorMessage: string) {
+  async markAsReadyForProcessing(id: number) {
     const selectCheck = await this.getById(id);
-    selectCheck.automationStatus = 'failed';
-    selectCheck.errorMessage = errorMessage;
-    await selectCheck.save();
-    return selectCheck;
-  }
-
-  /**
-   * Error'ni tozalash va qayta urinish uchun tayyor qilish
-   */
-  async resetForRetry(id: number) {
-    const selectCheck = await this.getById(id);
+    if (!selectCheck.chekRaqam || !selectCheck.mxik || !selectCheck.ulchov) {
+      throw new Error("Barcha maydonlar to'ldirilishi kerak");
+    }
+    selectCheck.isActive = true;
     selectCheck.automationStatus = 'pending';
-    selectCheck.errorMessage = undefined;
-    selectCheck.processed = false;
     await selectCheck.save();
     return selectCheck;
   }
 
-  /**
-   * Ko'p record'larni qayta urinish uchun reset qilish
-   */
-  async bulkResetForRetry(ids: number[]) {
-    const [updatedCount] = await SelectCheck.update(
-      {
-        automationStatus: 'pending',
-        errorMessage: undefined,
-        processed: false,
-      },
-      {
-        where: {
-          id: { [Op.in]: ids },
-        },
-      },
-    );
-
-    return {
-      updatedCount,
-      message: `${updatedCount} ta select_check qayta urinish uchun tayyor`,
-    };
-  }
-
-  /**
-   * Statistika
-   */
   async getStatistics() {
     const total = await SelectCheck.count();
+    const active = await SelectCheck.count({ where: { isActive: true } });
+    const processed = await SelectCheck.count({ where: { processed: true } });
+    const pending = await SelectCheck.count({
+      where: { automationStatus: 'pending' },
+    });
+    const failed = await SelectCheck.count({
+      where: { automationStatus: 'failed' },
+    });
+    const totalSum = await SelectCheck.sum('umumiyChekSumma');
+    const totalFakturaSum = await SelectCheck.sum('fakturaSumma');
 
     const byStatus = await SelectCheck.findAll({
       attributes: [
@@ -762,18 +743,6 @@ export class SelectChecksService {
       group: ['automationStatus'],
       raw: true,
     });
-
-    const active = await SelectCheck.count({ where: { isActive: true } });
-    const processed = await SelectCheck.count({ where: { processed: true } });
-    const pending = await SelectCheck.count({
-      where: { automationStatus: 'pending' },
-    });
-    const failed = await SelectCheck.count({
-      where: { automationStatus: 'failed' },
-    });
-
-    const totalSum = await SelectCheck.sum('umumiyChekSumma');
-    const totalFakturaSum = await SelectCheck.sum('fakturaSumma');
 
     return {
       total,
@@ -788,50 +757,5 @@ export class SelectChecksService {
         return acc;
       }, {}),
     };
-  }
-
-  /**
-   * Sana oralig'idagi record'larni olish
-   */
-  async getByDateRange(startDate: Date, endDate: Date) {
-    const selectChecks = await SelectCheck.findAll({
-      where: {
-        createdAt: {
-          [Op.between]: [startDate, endDate],
-        },
-      },
-      order: [['createdAt', 'DESC']],
-    });
-
-    return selectChecks;
-  }
-
-  /**
-   * Barcha record'larni o'chirish (ehtiyot bo'ling!)
-   */
-  async deleteAll() {
-    const deletedCount = await SelectCheck.destroy({
-      where: {},
-      truncate: true,
-    });
-
-    return {
-      deletedCount,
-      message: `Barcha select_check'lar o'chirildi`,
-    };
-  }
-
-  async markAsReadyForProcessing(id: number) {
-    const selectCheck = await this.getById(id);
-
-    if (!selectCheck.chekRaqam || !selectCheck.mxik || !selectCheck.ulchov) {
-      throw new Error("Barcha maydonlar to'ldirilishi kerak");
-    }
-
-    selectCheck.isActive = true;
-    selectCheck.automationStatus = 'pending';
-    await selectCheck.save();
-
-    return selectCheck;
   }
 }

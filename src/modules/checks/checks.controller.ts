@@ -84,6 +84,51 @@ class ChecksController {
         });
       }
 
+      // ✅ Helper function: Sanani parse qilish
+      const parseExcelDate = (dateInput: any): string => {
+        if (!dateInput)
+          return new Date().toLocaleDateString('en-GB').replace(/\//g, '.');
+
+        const dateStr = String(dateInput).trim();
+
+        // "Invalid Date" yoki bo'sh
+        if (dateStr === 'Invalid Date' || dateStr === '') {
+          return new Date().toLocaleDateString('en-GB').replace(/\//g, '.');
+        }
+
+        // Format: "26.01.2024 10:05:44" yoki "26.01.2024"
+        if (dateStr.includes('.')) {
+          const datePart = dateStr.split(' ')[0]; // Faqat sana qismini olamiz
+          return datePart; // "26.01.2024"
+        }
+
+        // Excel serial number formatini parse qilish
+        if (!isNaN(Number(dateStr))) {
+          const excelEpoch = new Date(1899, 11, 30);
+          const days = Number(dateStr);
+          const date = new Date(excelEpoch.getTime() + days * 86400000);
+          const day = String(date.getDate()).padStart(2, '0');
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const year = date.getFullYear();
+          return `${day}.${month}.${year}`;
+        }
+
+        // ISO format yoki boshqa format
+        try {
+          const date = new Date(dateStr);
+          if (!isNaN(date.getTime())) {
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}.${month}.${year}`;
+          }
+        } catch (e) {
+          // ignore
+        }
+
+        return new Date().toLocaleDateString('en-GB').replace(/\//g, '.');
+      };
+
       // Excel faylni o'qish
       const workbook = xlsx.readFile(req.file.path);
       const worksheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -97,7 +142,6 @@ class ChecksController {
         errors: [] as any[],
       };
 
-      // Import ID va User ID
       const importId = req.body.importId
         ? parseInt(req.body.importId)
         : undefined;
@@ -116,9 +160,6 @@ class ChecksController {
         const rowNumber = i + 2;
 
         try {
-          // ============================================
-          // CHECKS UCHUN MA'LUMOTLARNI TEKSHIRISH
-          // ============================================
           const hasCheckData =
             row['creation_date_check'] &&
             row['chek_raqam'] &&
@@ -151,12 +192,10 @@ class ChecksController {
             continue;
           }
 
-          // ============================================
-          // CHECK NI YARATISH
-          // ============================================
+          // ✅ CHECK NI YARATISH (to'g'rilangan)
           await Check.create(
             {
-              creation_date_check: row['creation_date_check'],
+              creation_date_check: parseExcelDate(row['creation_date_check']),
               chekRaqam: row['chek_raqam'].toString().trim(),
               chekSumma: parseFloat(row['chek_summa']) || 0,
               maxsulotNomi: row['maxsulot_nomi'],
@@ -179,7 +218,6 @@ class ChecksController {
         }
       }
 
-      // Transaction commit
       await transaction.commit();
 
       // Yuklangan faylni o'chirish
@@ -193,10 +231,8 @@ class ChecksController {
         data: results,
       });
     } catch (error: any) {
-      // Transaction rollback
       await transaction.rollback();
 
-      // Faylni o'chirish
       if (req.file?.path && fs.existsSync(req.file.path)) {
         try {
           fs.unlinkSync(req.file.path);

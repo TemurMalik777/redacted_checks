@@ -150,6 +150,7 @@ SelectCheck.init(
     postTerminalSeria: {
       type: DataTypes.STRING(100),
       allowNull: false,
+      field: 'post_terminal_seria',
       validate: {
         notEmpty: true,
       },
