@@ -286,24 +286,22 @@ export class SelectChecksController {
   async getPreview(req: Request, res: Response, next: NextFunction) {
     try {
       const fakturas = await service.getActiveFakturasRaw(sequelize);
-      
-      // Har bir faktura uchun potensial cheklar sonini ko'rsatish
+
+      // Har bir faktura uchun potensial cheklar sonini ko'rsatish (3 bosqichli)
       const preview = [];
       for (const faktura of fakturas.slice(0, 10)) { // Faqat 10 ta
-        const maxSumma = faktura.faktura_summa * (1 + service['TOLERANCE_PERCENT']);
         const checks = await service.getUnprocessedChecksAfterDateRaw(
           sequelize,
-          faktura.creation_data_faktura,
-          maxSumma
+          faktura.creation_data_faktura
         );
-        
+
         preview.push({
           faktura_id: faktura.id,
           mxik: faktura.mxik,
           faktura_summa: faktura.faktura_summa,
           faktura_sana: faktura.creation_data_faktura,
           available_checks: checks.length,
-          max_summa: maxSumma,
+          strategy: '3 bosqichli: Aniq teng / 0-3% ko\'p / 0-2% kam',
         });
       }
 

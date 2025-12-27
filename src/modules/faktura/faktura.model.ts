@@ -118,7 +118,7 @@ Faktura.init(
       comment: 'MXIK - Maxsulot klassifikatsiya kodi',
     },
     ulchov: {
-      type: DataTypes.STRING(20),
+      type: DataTypes.STRING(250),
       allowNull: false,
       validate: {
         notEmpty: true,

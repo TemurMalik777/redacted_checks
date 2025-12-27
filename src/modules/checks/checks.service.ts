@@ -23,53 +23,6 @@ interface ImportResult {
   }>;
 }
 
-/**
- * Helper: Stringni Date obyektiga aylantirish
- */
-function parseDate(dateInput: any): Date {
-  if (!dateInput) return new Date();
-  if (dateInput instanceof Date) return dateInput;
-  
-  const dateStr = String(dateInput).trim();
-  
-  if (dateStr === 'Invalid Date' || dateStr === '') {
-    return new Date();
-  }
-  
-  // Format: "26.01.2024 10:05:44" yoki "26.01.2024"
-  if (dateStr.includes('.')) {
-    const datePart = dateStr.split(' ')[0];
-    const parts = datePart.split('.');
-    
-    if (parts.length === 3) {
-      const day = parseInt(parts[0], 10);
-      const month = parseInt(parts[1], 10) - 1;
-      const year = parseInt(parts[2], 10);
-      
-      if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
-        return new Date(year, month, day);
-      }
-    }
-  }
-  
-  const parsed = new Date(dateStr);
-  if (!isNaN(parsed.getTime())) {
-    return parsed;
-  }
-  
-  return new Date();
-}
-
-/**
- * Helper: Date obyektini string formatga aylantirish (DD.MM.YYYY)
- */
-function formatDate(date: Date): string {
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${day}.${month}.${year}`;
-}
-
 class ChecksService {
   async importFromExcel(
     filePath: string,
