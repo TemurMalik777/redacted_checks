@@ -68,4 +68,40 @@ const logger = winston.createLogger({
   ],
 });
 
+// ✅ YANGI: Har bir bosqich uchun alohida logger (GLOBAL, faqat 1 marta yaratiladi)
+const stageLoggers: { [key: number]: winston.Logger } = {};
+
+export const createStageLogger = (stage: 1 | 2 | 3 | 4 | 5 | 6) => {
+  // ✅ Agar logger mavjud bo'lsa, uni qaytarish (yangi yaratmaslik)
+  if (stageLoggers[stage]) {
+    return stageLoggers[stage];
+  }
+
+  const stageNames = {
+    1: 'bosqich-1-aniq-teng',
+    2: 'bosqich-2-bitta-0-3-kop',
+    3: 'bosqich-3-bitta-0-2-kam',
+    4: 'bosqich-4-kop-0-3-kop',
+    5: 'bosqich-5-kop-0-2-kam',
+    6: 'bosqich-6-hammasi'
+  };
+
+  // ✅ Yangi logger yaratish va saqlash
+  stageLoggers[stage] = winston.createLogger({
+    level: 'info',
+    format: customFormat,
+    transports: [
+      new DailyRotateFile({
+        dirname: path.join(logDir, 'stages'),
+        filename: `${stageNames[stage]}-%DATE%.log`,
+        datePattern: 'YYYY-MM-DD',
+        maxSize: '20m',
+        maxFiles: '30d',
+      }),
+    ],
+  });
+
+  return stageLoggers[stage];
+};
+
 export default logger;

@@ -129,10 +129,11 @@ class ChecksService {
 
           const chekSumma = parseFloat(String(row.chek_summa).replace(/,/g, ''));
           
-          if (isNaN(chekSumma) || chekSumma < 0) {
+          // ✅ YANGI: 0 yoki manfiy summalarni rad etish
+          if (isNaN(chekSumma) || chekSumma <= 0) {
             errors.push({
               row: rowNumber,
-              message: `Noto'g'ri chek summa: ${row.chek_summa}`,
+              message: `Chek summa 0 yoki manfiy bo'lishi mumkin emas: ${row.chek_summa}`,
               data: row,
             });
             failed++;
@@ -140,6 +141,17 @@ class ChecksService {
           }
 
           const chekRaqam = String(row.chek_raqam).trim();
+
+          // ✅ YANGI: Bo'sh yoki noto'g'ri chek raqamni rad etish
+          if (!chekRaqam || chekRaqam === '' || chekRaqam === '0' || chekRaqam.toLowerCase() === 'null') {
+            errors.push({
+              row: rowNumber,
+              message: `Chek raqam bo'sh yoki noto'g'ri: ${row.chek_raqam}`,
+              data: row,
+            });
+            failed++;
+            continue;
+          }
 
           if (existingChekRaqamsSet.has(chekRaqam)) {
             errors.push({
@@ -301,16 +313,21 @@ class ChecksService {
     maxsulotNomi: string;
     userId: number;
   }) {
+    // ✅ YANGI: Validation
+    if (data.chekSumma <= 0) {
+      throw new Error('Chek summa 0 yoki manfiy bo\'lishi mumkin emas');
+    }
+
+    if (!data.chekRaqam || data.chekRaqam.trim() === '' || data.chekRaqam.trim() === '0') {
+      throw new Error('Chek raqam bo\'sh yoki noto\'g\'ri');
+    }
+
     const existingCheck = await Check.findOne({
       where: { chekRaqam: data.chekRaqam.trim() },
     });
 
     if (existingCheck) {
       throw new Error('Bu chek raqam allaqachon mavjud');
-    }
-
-    if (data.chekSumma < 0) {
-      throw new Error('Chek summa manfiy bo\'lishi mumkin emas');
     }
 
     const check = await Check.create({
@@ -342,6 +359,15 @@ class ChecksService {
       throw new Error('Check topilmadi');
     }
 
+    // ✅ YANGI: Validation
+    if (data.chekSumma !== undefined && data.chekSumma <= 0) {
+      throw new Error('Chek summa 0 yoki manfiy bo\'lishi mumkin emas');
+    }
+
+    if (data.chekRaqam && (!data.chekRaqam.trim() || data.chekRaqam.trim() === '0')) {
+      throw new Error('Chek raqam bo\'sh yoki noto\'g\'ri');
+    }
+
     if (data.chekRaqam && data.chekRaqam !== check.chekRaqam) {
       const existingCheck = await Check.findOne({
         where: {
@@ -353,10 +379,6 @@ class ChecksService {
       if (existingCheck) {
         throw new Error('Bu chek raqam boshqa checkda mavjud');
       }
-    }
-
-    if (data.chekSumma !== undefined && data.chekSumma < 0) {
-      throw new Error('Chek summa manfiy bo\'lishi mumkin emas');
     }
 
     const updateData: any = {};

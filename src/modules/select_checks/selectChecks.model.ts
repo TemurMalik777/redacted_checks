@@ -62,37 +62,37 @@ class SelectCheck
   extends Model<SelectCheckAttributes, SelectCheckCreationAttributes>
   implements SelectCheckAttributes
 {
-  public id!: number;
-  public uuid!: string;
+  declare id: number;
+  declare uuid: string;
 
-  public postTerminalSeria!: string; // 🆕 Post terminal seriyasi
+  declare postTerminalSeria: string; // 🆕 Post terminal seriyasi
 
   // Faktura
-  public creationDataFaktura!: string;
-  public mxik!: string;
-  public ulchov!: string;
-  public fakturaSumma!: number;
-  public fakturaMiqdor!: number;
+  declare creationDataFaktura: string;
+  declare mxik: string;
+  declare ulchov: string;
+  declare fakturaSumma: number;
+  declare fakturaMiqdor: number;
 
   // Check
-  public creationDateCheck!: string; // 🆕
-  public chekRaqam!: string;
-  public maxsulotNomi!: string;
-  public chekSumma!: number;
+  declare creationDateCheck: string; // 🆕
+  declare chekRaqam: string;
+  declare maxsulotNomi: string;
+  declare chekSumma: number;
 
   // Calculated
-  public miqdor!: number;
-  public umumiyChekSumma!: number;
-  public birBirlik!: number;
+  declare miqdor: number;
+  declare umumiyChekSumma: number;
+  declare birBirlik: number;
 
   // Status
-  public isActive!: boolean;
-  public processed!: boolean;
-  public automationStatus?: 'pending' | 'processing' | 'completed' | 'failed';
-  public errorMessage?: string;
+  declare isActive: boolean;
+  declare processed: boolean;
+  declare automationStatus?: 'pending' | 'processing' | 'completed' | 'failed';
+  declare errorMessage?: string;
 
-  public readonly createdAt!: Date;
-  public readonly updatedAt!: Date;
+  declare readonly createdAt: Date;
+  declare readonly updatedAt: Date;
 
   /**
    * Bir birlik narxni qayta hisoblash
@@ -128,7 +128,9 @@ class SelectCheck
    */
   public getPercentageDifference(): number {
     if (this.fakturaSumma === 0) return 0;
-    return ((this.umumiyChekSumma - this.fakturaSumma) / this.fakturaSumma) * 100;
+    return (
+      ((this.umumiyChekSumma - this.fakturaSumma) / this.fakturaSumma) * 100
+    );
   }
 }
 
@@ -175,7 +177,7 @@ SelectCheck.init(
       comment: 'MXIK kodi',
     },
     ulchov: {
-      type: DataTypes.STRING(20),
+      type: DataTypes.STRING(350),
       allowNull: false,
       validate: {
         notEmpty: true,
@@ -295,7 +297,7 @@ SelectCheck.init(
       type: DataTypes.TEXT,
       allowNull: true,
       field: 'error_message',
-      comment: 'Xato xabari (agar bo\'lsa)',
+      comment: "Xato xabari (agar bo'lsa)",
     },
   },
   {
@@ -310,7 +312,7 @@ SelectCheck.init(
       { fields: ['chek_raqam'] },
       { fields: ['mxik'] },
       { fields: ['creation_data_faktura'] }, // 🆕
-      { fields: ['creation_date_check'] },   // 🆕
+      { fields: ['creation_date_check'] }, // 🆕
     ],
 
     hooks: {

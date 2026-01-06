@@ -165,6 +165,96 @@ router.post('/reset', authMiddleware, controller.reset.bind(controller));
 router.get('/preview', authMiddleware, controller.getPreview.bind(controller));
 
 // =============================================
+// 🤖 AUTOMATION
+// =============================================
+
+/**
+ * @swagger
+ * /api/select_checks/automation/process:
+ *   post:
+ *     summary: 🤖 Select checks'larni UI orqali avtomatik qayta ishlash
+ *     description: |
+ *       **Bu endpoint:**
+ *       1. Browser ochadi (Playwright)
+ *       2. Soliq.uz saytiga kiradi
+ *       3. Login bo'lishni kutadi (5 daqiqa)
+ *       4. Select_checks jadvalidan "pending" holatdagi ma'lumotlarni oladi
+ *       5. Har bir chekni avtomatik ravishda UI orqali qayta ishlaydi:
+ *          - Chekni qidiradi
+ *          - "Batafsil" tugmasini bosadi
+ *          - "Tahrirlash" tugmasini bosadi
+ *          - MXIK, o'lchov, miqdor, summa maydonlarini to'ldiradi
+ *          - CAPTCHA ni yechadi (2Captcha API orqali)
+ *          - "Saqlash" tugmasini bosadi
+ *       6. Natijalarni qaytaradi
+ *
+ *       **Muhim:**
+ *       - Browser ochilgandan so'ng, foydalanuvchi qo'lda login qilishi kerak
+ *       - Maksimal 100 ta select_check bir vaqtning o'zida qayta ishlanadi
+ *       - Har bir chek uchun 3 marta qayta urinish amalga oshiriladi (CAPTCHA xatosi bo'lsa)
+ *     tags: [SelectChecks]
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - captchaApiKey
+ *             properties:
+ *               captchaApiKey:
+ *                 type: string
+ *                 description: 2Captcha API key
+ *                 example: "your_2captcha_api_key_here"
+ *               headless:
+ *                 type: boolean
+ *                 description: Browser headless rejimida ishlatilsinmi
+ *                 default: false
+ *     responses:
+ *       200:
+ *         description: Automation jarayoni yakunlandi
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Automation jarayoni yakunlandi"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     total:
+ *                       type: integer
+ *                       description: Jami qayta ishlangan cheklar
+ *                       example: 50
+ *                     success:
+ *                       type: integer
+ *                       description: Muvaffaqiyatli qayta ishlangan cheklar
+ *                       example: 45
+ *                     failed:
+ *                       type: integer
+ *                       description: Xato bilan yakunlangan cheklar
+ *                       example: 5
+ *       400:
+ *         description: CAPTCHA API key kiritilmagan
+ *       401:
+ *         description: Autentifikatsiya talab qilinadi
+ *       500:
+ *         description: Automation xatosi
+ */
+router.post(
+  '/automation/process',
+  authMiddleware,
+  controller.processWithAutomation.bind(controller),
+);
+
+// =============================================
 // STATISTIKA
 // =============================================
 
