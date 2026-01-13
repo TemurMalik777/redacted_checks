@@ -187,7 +187,7 @@ router.get('/', authMiddleware, controller.getAll);
  *     summary: Umumiy statistika
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: query
  *         name: userId
@@ -235,7 +235,7 @@ router.get('/stats', authMiddleware, controller.getStatistics);
  *     summary: Active import'lar (processing holatda)
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: query
  *         name: limit
@@ -255,7 +255,7 @@ router.get('/active', authMiddleware, controller.getActiveImports);
  *     summary: Pending import'lar
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: query
  *         name: limit
@@ -275,7 +275,7 @@ router.get('/pending', authMiddleware, controller.getPendingImports);
  *     summary: Failed import'lar
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: query
  *         name: limit
@@ -295,7 +295,7 @@ router.get('/failed', authMiddleware, controller.getFailedImports);
  *     summary: Oxirgi import'lar
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: query
  *         name: limit
@@ -319,7 +319,7 @@ router.get('/recent', authMiddleware, controller.getRecent);
  *     summary: Bitta import'ni olish
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -341,7 +341,7 @@ router.get('/:id', authMiddleware, controller.getById);
  *     summary: Yangi import yaratish
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -380,7 +380,7 @@ router.post('/', authMiddleware, controller.create);
  *     summary: Import'ni yangilash
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -414,7 +414,7 @@ router.put('/:id', authMiddleware, controller.update);
  *     summary: Import'ni o'chirish
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -434,7 +434,7 @@ router.delete('/:id', authMiddleware, controller.delete);
  *     summary: Ko'p import'larni o'chirish
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -462,7 +462,7 @@ router.post('/bulk/delete', authMiddleware, controller.bulkDelete);
  *     summary: Import'ni boshlash
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -482,7 +482,7 @@ router.post('/:id/start', authMiddleware, controller.startImport);
  *     summary: Import'ni tugallash
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -520,7 +520,7 @@ router.post('/:id/complete', authMiddleware, controller.completeImport);
  *     summary: Import'ni xato bilan tugallash
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -552,7 +552,7 @@ router.post('/:id/fail', authMiddleware, controller.failImport);
  *     summary: Failed import'ni qayta boshlash
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -572,7 +572,7 @@ router.post('/:id/retry', authMiddleware, controller.retryImport);
  *     summary: Import'ni bekor qilish
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -592,7 +592,7 @@ router.post('/:id/cancel', authMiddleware, controller.cancelImport);
  *     summary: isActive'ni o'zgartirish
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
@@ -612,7 +612,7 @@ router.patch('/:id/toggle-active', authMiddleware, controller.toggleActive);
  *     summary: User'ning import'larini olish
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: userId
@@ -637,7 +637,7 @@ router.get('/user/:userId', authMiddleware, controller.getByUser);
  *     summary: User statistikasi
  *     tags: [Import]
  *     security:
- *       - bearerAuth: []
+ *       - BearerAuth: []
  *     parameters:
  *       - in: path
  *         name: userId

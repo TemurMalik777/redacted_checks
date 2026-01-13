@@ -1191,4 +1191,56 @@ export class SelectChecksService {
       bir_birlik: sc.birBirlik,
     }));
   }
+
+  /**
+   * 🔄 Automation uchun select_check'larni tayyor qilish
+   *
+   * Quyidagi shartlarga mos select_check'larni isActive=true qiladi:
+   * - processed = false
+   * - automationStatus = 'pending'
+   * - Barcha majburiy maydonlar to'ldirilgan
+   */
+  async prepareForAutomation(limit: number = 100): Promise<{ updated: number; total: number }> {
+    try {
+      logger.info(`🔄 Automation uchun select_check'lar tayyor qilinmoqda (limit: ${limit})...`);
+
+      // 1. Shartlarga mos select_check'larni topish
+      const selectChecks = await SelectCheck.findAll({
+        where: {
+          isActive: false,
+          processed: false,
+          automationStatus: 'pending',
+        },
+        limit,
+        order: [['createdAt', 'ASC']],
+      });
+
+      // 2. Faqat barcha majburiy maydonlar to'ldirilganlarini filter qilish
+      const validChecks = selectChecks.filter(
+        (sc) => sc.chekRaqam && sc.mxik && sc.ulchov
+      );
+
+      if (validChecks.length === 0) {
+        logger.warn('⚠️ Tayyor qilish uchun select_check topilmadi');
+        return { updated: 0, total: 0 };
+      }
+
+      // 3. Ularni isActive=true qilish
+      const ids = validChecks.map((sc) => sc.id);
+      const [updatedCount] = await SelectCheck.update(
+        { isActive: true },
+        { where: { id: { [Op.in]: ids } } }
+      );
+
+      logger.info(`✅ ${updatedCount} ta select_check isActive=true qilindi`);
+
+      return {
+        updated: updatedCount,
+        total: validChecks.length,
+      };
+    } catch (error) {
+      logger.error('❌ prepareForAutomation xatosi:', error);
+      throw error;
+    }
+  }
 }

@@ -1,877 +1,1060 @@
-import { Page } from 'playwright';
+import { Page, Locator } from 'playwright';
 import { logger } from '../utils/logUtils';
-import { uploadZipModal } from './uploadZipModal';
-import { CaptchaAction } from './captchaAction';
-import { clickSaveButton } from './clickSaveCheck';
 
 /**
- * Mahsulot ma'lumotlari interfeysi
+ * CheckData interface - Database'dan keladigan ma'lumotlar
  */
 export interface CheckData {
-  chek_raqam?: string;
-  mahsulot_nomi?: string;
+  chek_raqam?: string | number;
   maxsulot_nomi?: string;
   product_name?: string;
-  Mahsulot?: string;
-  Nomi?: string;
-  miqdor?: number | string;
-  amount?: number | string;
-  Miqdor?: number | string;
-  Миқдор?: number | string;
   mxik?: string;
-  MXIK?: string;
-  'МХИК коди'?: string;
-  unit?: string;
+  mxik_code?: string;
   ulchov?: string;
-  'Ўлчов бирлиги'?: string;
-  bir_birlik?: number | string;
+  unit?: string;
+  miqdor?: string | number;
+  amount?: string | number;
+  chek_summa?: string | number;
+  summa?: string | number;
+  bir_birlik?: string | number;
+  price?: string | number;
 }
 
 /**
- * String similarity calculator (Python'dagi SequenceMatcher)
+ * Kirill-Lotin konversiya mapping
  */
-class SequenceMatcher {
-  static ratio(str1: string, str2: string): number {
-    const longer = str1.length > str2.length ? str1 : str2;
-    const shorter = str1.length > str2.length ? str2 : str1;
-
-    if (longer.length === 0) {
-      return 1.0;
-    }
-
-    const editDistance = this.levenshteinDistance(longer, shorter);
-    return (longer.length - editDistance) / longer.length;
-  }
-
-  private static levenshteinDistance(str1: string, str2: string): number {
-    const matrix: number[][] = [];
-
-    for (let i = 0; i <= str2.length; i++) {
-      matrix[i] = [i];
-    }
-
-    for (let j = 0; j <= str1.length; j++) {
-      matrix[0][j] = j;
-    }
-
-    for (let i = 1; i <= str2.length; i++) {
-      for (let j = 1; j <= str1.length; j++) {
-        if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1, // substitution
-            matrix[i][j - 1] + 1, // insertion
-            matrix[i - 1][j] + 1, // deletion
-          );
-        }
-      }
-    }
-
-    return matrix[str2.length][str1.length];
-  }
-}
+const CYRILLIC_TO_LATIN: Record<string, string> = {
+  а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ё: 'e',
+  ж: 'j', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm',
+  н: 'n', о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', 
+  ф: 'f', х: 'x', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'shch', 
+  ъ: '', ы: 'i',ь: '', э: 'e', ю: 'yu', я: 'ya',
+  // Bosh harflar
+  А: 'A', Б: 'B', В: 'V', Г: 'G', Д: 'D', Е: 'E',
+  Ё: 'E', Ж: 'J', З: 'Z', И: 'I', Й: 'Y', К: 'K',
+  Л: 'L', М: 'M', Н: 'N', О: 'O', П: 'P', Р: 'R',
+  С: 'S', Т: 'T', У: 'U', Ф: 'F', Х: 'X', Ц: 'Ts',
+  Ч: 'Ch', Ш: 'Sh', Щ: 'Shch', Ъ: '', Ы: 'I', Ь: '',
+  Э: 'E', Ю: 'Yu', Я: 'Ya',
+};
 
 /**
- * O'lchov birligini normalize qilish
+ * O'lchov birlik normalizatsiya mapping
  */
-function normalizeUnitName(unitName: string | null | undefined): string {
-  if (!unitName) return '';
+const UNIT_MAPPINGS: Record<string, string[]> = {
+  штука: ['шт', 'штук', 'штука', 'dona', 'дона', 'piece', 'pcs'],
+  килограмм: ['кг', 'kg', 'килограмм', 'kilogram', 'кило'],
+  литр: ['л', 'lt', 'litr', 'литр', 'liter'],
+  метр: ['м', 'm', 'metr', 'метр', 'meter'],
+  упаковка: ['уп', 'упак', 'упаковка', 'qadoq', 'package', 'pack'],
+  комплект: ['компл', 'комплект', 'komplekt', 'set'],
+  грамм: ['г', 'гр', 'gr', 'gram', 'грамм'],
+};
 
-  let text = String(unitName).trim().toLowerCase();
+/**
+ * Matnni normalize qilish (kirill -> lotin)
+ */
+function normalizeText(text: string): string {
+  if (!text) return '';
 
-  // Kirill -> Lotin konversiya
-  const cyrillicToLatin: Record<string, string> = {
-    а: 'a',
-    б: 'b',
-    в: 'v',
-    г: 'g',
-    д: 'd',
-    е: 'e',
-    ё: 'e',
-    ж: 'j',
-    з: 'z',
-    и: 'i',
-    й: 'y',
-    к: 'k',
-    л: 'l',
-    м: 'm',
-    н: 'n',
-    о: 'o',
-    п: 'p',
-    р: 'r',
-    с: 's',
-    т: 't',
-    у: 'u',
-    ф: 'f',
-    х: 'x',
-    ц: 'ts',
-    ч: 'ch',
-    ш: 'sh',
-    щ: 'shch',
-    ъ: '',
-    ы: 'i',
-    ь: '',
-    э: 'e',
-    ю: 'yu',
-    я: 'ya',
-    ў: 'o',
-    қ: 'q',
-    ғ: 'g',
-    ҳ: 'h',
-  };
+  let result = text.toLowerCase().trim();
 
-  let result = '';
-  for (const char of text) {
-    result += cyrillicToLatin[char] || char;
+  // Kirill harflarni lotinga o'zgartirish
+  for (const [cyrillic, latin] of Object.entries(CYRILLIC_TO_LATIN)) {
+    result = result.replace(
+      new RegExp(cyrillic.toLowerCase(), 'g'),
+      latin.toLowerCase(),
+    );
   }
 
-  // Qisqartmalar
-  result = result
-    .replace(/gramm/g, 'g')
-    .replace(/gram/g, 'g')
-    .replace(/milligram/g, 'mg')
-    .replace(/milligr/g, 'mg')
-    .replace(/kilogramm/g, 'kg')
-    .replace(/kilogr/g, 'kg')
-    .replace(/litr/g, 'l')
-    .replace(/liter/g, 'l')
-    .replace(/millilitr/g, 'ml')
-    .replace(/milliliter/g, 'ml')
-    .replace(/donasi/g, 'dona')
-    .replace(/dona-dona/g, 'dona')
-    .replace(/tabletka/g, 'tabl')
-    .replace(/tablet/g, 'tabl')
-    .replace(/kapsula/g, 'kaps')
-    .replace(/capsule/g, 'kaps');
-
-  // Bo'sh joylarni normalize qilish
-  result = result.replace(/\s+/g, ' ').trim();
-
-  // Maxsus belgilarni tozalash
-  result = result.replace(/["`']/g, '');
-  result = result.replace(/\( /g, '(').replace(/ \)/g, ')');
+  // Ortiqcha bo'shliqlarni olib tashlash
+  result = result.replace(/\s+/g, ' ');
 
   return result;
 }
 
 /**
- * Mahsulot nomini normalize qilish
+ * O'lchov birlikni normalize qilish
  */
-function normalizeProductName(name: string | null | undefined): string {
-  if (!name) return '';
+function normalizeUnit(unit: string): string {
+  if (!unit) return '';
 
-  let text = String(name).trim().toLowerCase();
+  const normalized = normalizeText(unit);
 
-  // Kirill -> Lotin
-  const cyrillicToLatin: Record<string, string> = {
-    а: 'a',
-    б: 'b',
-    в: 'v',
-    г: 'g',
-    д: 'd',
-    е: 'e',
-    ё: 'e',
-    ж: 'j',
-    з: 'z',
-    и: 'i',
-    й: 'y',
-    к: 'k',
-    л: 'l',
-    м: 'm',
-    н: 'n',
-    о: 'o',
-    п: 'p',
-    р: 'r',
-    с: 's',
-    т: 't',
-    у: 'u',
-    ф: 'f',
-    х: 'x',
-    ц: 'ts',
-    ч: 'ch',
-    ш: 'sh',
-    щ: 'shch',
-    ъ: '',
-    ы: 'i',
-    ь: '',
-    э: 'e',
-    ю: 'yu',
-    я: 'ya',
-    ў: 'o',
-    қ: 'q',
-    ғ: 'g',
-    ҳ: 'h',
-  };
-
-  let result = '';
-  for (const char of text) {
-    result += cyrillicToLatin[char] || char;
-  }
-
-  return result.trim();
-}
-
-/**
- * Fuzzy matching - o'xshashlikni tekshirish
- */
-function fuzzyMatchUnits(
-  normalizedDb: string,
-  normalizedWeb: string,
-  threshold: number = 0.85,
-): boolean {
-  const similarity = SequenceMatcher.ratio(normalizedDb, normalizedWeb);
-  return similarity >= threshold;
-}
-
-/**
- * Field Filler Action - Asosiy forma to'ldirish
- */
-export class FieldFillerAction {
-  constructor(private page: Page) {}
-
-  /**
-   * Asosiy funksiya - chekni to'ldirish va saqlash
-   */
-  async execute(data: CheckData, captchaApiKey?: string): Promise<boolean> {
-    try {
-      // Mahsulot nomini olish
-      const productName =
-        data.mahsulot_nomi ||
-        data.maxsulot_nomi ||
-        data.product_name ||
-        data.Mahsulot ||
-        data.Nomi;
-
-      if (!productName) {
-        logger.error('❌ Mahsulot nomi topilmadi!');
-        return false;
-      }
-
-      const chekRaqam = data.chek_raqam
-        ? String(data.chek_raqam).trim()
-        : undefined;
-
-      logger.info('\n' + '='.repeat(60));
-      logger.info('📝 CHEK TAHRIRLASH BOSHLANDI');
-      if (chekRaqam) {
-        logger.info(`🔢 CHEK: ${chekRaqam}`);
-      }
-      logger.info(`📦 MAHSULOT: ${productName}`);
-      logger.info('='.repeat(60) + '\n');
-
-      // 1. Mahsulot qatorini topish
-      const rowIndex = await this.findAndHighlightProductRow(productName);
-
-      if (rowIndex === null) {
-        logger.error('❌ Mahsulot qatori topilmadi!');
-        return false;
-      }
-
-      await this.page.waitForTimeout(500);
-
-      // 2. Ma'lumotlarni olish
-      const amount = data.miqdor || data.amount || data.Miqdor || data.Миқдор;
-      const mxikCode = data.mxik || data.MXIK || data['МХИК коди'];
-      const unitName = data.unit || data.ulchov || data['Ўлчов бирлиги'];
-
-      if (!amount || !mxikCode || !unitName) {
-        logger.error("❌ Miqdor, MXIK yoki o'lchov birligi topilmadi!");
-        logger.info(`   Miqdor: ${amount}`);
-        logger.info(`   MXIK: ${mxikCode}`);
-        logger.info(`   O'lchov: ${unitName}`);
-        return false;
-      }
-
-      logger.info('\n' + '='.repeat(60));
-      logger.info(`🔧 QATOR #${rowIndex} UCHUN MA'LUMOTLAR TO'LDIRISH`);
-      logger.info('='.repeat(60));
-
-      // 3. MIQDORNI O'ZGARTIRISH (MXIK dan oldin!)
-      logger.info(`\n🔢 MIQDOR: ${amount}`);
-      const amountOk = await this.setAmountForRow(rowIndex, String(amount));
-
-      if (!amountOk) {
-        logger.warn("⚠️ Miqdor o'zgartirilmadi, lekin davom etamiz...");
-      }
-
-      await this.page.waitForTimeout(300);
-
-      // 4. MXIK tanlash
-      logger.info(`\n📋 MXIK: ${mxikCode}`);
-      const mxikOk = await this.selectMxikCodeForRow(
-        rowIndex,
-        String(mxikCode),
-      );
-
-      if (!mxikOk) {
-        logger.error('❌ MXIK tanlanmadi!');
-        return false;
-      }
-
-      await this.page.waitForTimeout(300);
-
-      // 5. O'lchov birligi tanlash
-      logger.info(`\n📏 O'lchov: ${unitName}`);
-      const unitOk = await this.selectUnitNameForRow(
-        rowIndex,
-        String(unitName),
-      );
-
-      if (!unitOk) {
-        logger.error("❌ O'lchov birligi tanlanmadi!");
-        return false;
-      }
-
-      logger.info("\n✅ Barcha ma'lumotlar to'ldirildi!");
-
-      // 6. ZIP fayl yuklash
-      logger.info('\n📦 ZIP fayl yuklanmoqda...');
-      await this.page.waitForTimeout(300);
-
-      const zipOk = await uploadZipModal(this.page, 'C:\\lll_ha', 1);
-      if (!zipOk) {
-        logger.warn('⚠️ ZIP fayl yuklanmadi, davom etamiz...');
-      }
-
-      // 7. CAPTCHA yechish va DARHOL saqlash
-      logger.info('\n🤖 Captcha yechish boshlandi...');
-      await this.page.waitForTimeout(200);
-
-      if (!captchaApiKey) {
-        logger.error('❌ CAPTCHA API key berilmagan!');
-        return false;
-      }
-
-      const captchaAction = new CaptchaAction({ apiKey: captchaApiKey });
-      const captchaOk = await captchaAction.solveCaptcha(this.page);
-
-      if (captchaOk) {
-        logger.info('✅ Captcha yechildi, DARHOL saqlanyapti...');
-        await this.page.waitForTimeout(100);
-
-        // Saqlash tugmasini darhol bosish
-        const saveOk = await clickSaveButton(
-          this.page,
-          chekRaqam,
-          1,
-          captchaApiKey,
-        );
-
-        if (saveOk) {
-          logger.info('\n✅✅✅ CHEK MUVAFFAQIYATLI SAQLANDI! ✅✅✅');
-          if (chekRaqam) {
-            logger.info(`✅ Chek #${chekRaqam} - TAYYOR`);
-          }
-          await this.page.waitForTimeout(1000);
-          return true;
-        } else {
-          logger.error('\n❌ Saqlashda muammo!');
-          return false;
-        }
-      } else {
-        logger.error('❌ Captcha yechishda xato!');
-        return false;
-      }
-    } catch (error) {
-      logger.error('\n❌ KRITIK XATO:', error);
-      return false;
+  // Mapping orqali standart nomga o'zgartirish
+  for (const [standard, variants] of Object.entries(UNIT_MAPPINGS)) {
+    if (variants.some((v) => normalized.includes(normalizeText(v)))) {
+      return standard;
     }
   }
 
-  /**
-   * Mahsulot qatorini topish va highlight qilish
-   */
-  private async findAndHighlightProductRow(
-    productName: string,
-  ): Promise<number | null> {
-    try {
-      logger.info(`\n🔍 Qidirilayotgan mahsulot: '${productName}'`);
+  return normalized;
+}
 
-      // Mahsulot nomini normalize qilish
-      const normalizedTarget = normalizeProductName(productName);
+/**
+ * Fuzzy match - ikki matnni solishtirish (0-1 oralig'ida)
+ */
+function fuzzyMatch(str1: string, str2: string): number {
+  const s1 = normalizeText(str1);
+  const s2 = normalizeText(str2);
 
-      // Barcha qatorlarni topish
-      const rows = await this.page
-        .locator("xpath=//tr[contains(@class, 'ant-table-row')]")
-        .all();
+  if (s1 === s2) return 1;
+  if (!s1 || !s2) return 0;
 
-      logger.info(`📊 Jami ${rows.length} ta qator mavjud`);
+  // To'liq mos kelish
+  if (s1.includes(s2) || s2.includes(s1)) {
+    return 0.9;
+  }
 
-      let bestMatch: any = null;
-      let bestSimilarity = 0;
-      let bestIdx: number | null = null;
+  // Levenshtein distance
+  const len1 = s1.length;
+  const len2 = s2.length;
 
-      // Har bir qatorni tekshirish
-      for (let idx = 0; idx < rows.length; idx++) {
-        try {
-          const row = rows[idx];
+  const matrix: number[][] = [];
 
-          // 2-chi td ichidagi mahsulot nomini olish
-          const nameCells = await row.locator('xpath=.//td[2]').all();
-          if (nameCells.length === 0) continue;
+  for (let i = 0; i <= len1; i++) {
+    matrix[i] = [i];
+  }
 
-          const rowProductName = await nameCells[0].textContent();
-          if (!rowProductName) continue;
+  for (let j = 0; j <= len2; j++) {
+    matrix[0][j] = j;
+  }
 
-          const rowNameTrimmed = rowProductName.trim().toLowerCase();
-          const normalizedRow = normalizeProductName(rowNameTrimmed);
+  for (let i = 1; i <= len1; i++) {
+    for (let j = 1; j <= len2; j++) {
+      const cost = s1[i - 1] === s2[j - 1] ? 0 : 1;
+      matrix[i][j] = Math.min(
+        matrix[i - 1][j] + 1,
+        matrix[i][j - 1] + 1,
+        matrix[i - 1][j - 1] + cost,
+      );
+    }
+  }
 
-          // 1. To'liq moslik
-          if (normalizedRow === normalizedTarget) {
-            bestMatch = row;
-            bestIdx = idx;
-            bestSimilarity = 1.0;
-            break;
+  const distance = matrix[len1][len2];
+  const maxLen = Math.max(len1, len2);
+
+  return 1 - distance / maxLen;
+}
+
+/**
+ * Modal ichida qatorlarni qidirish va mahsulot nomiga mos qatorni topish
+ */
+async function findProductRow(
+  page: Page,
+  productName: string,
+  timeout: number = 10000,
+): Promise<{ rowIndex: number; rowElement: Locator } | null> {
+  try {
+    logger.info(`\n🔍 Mahsulot qidirilmoqda: '${productName}'`);
+
+    const targetName = normalizeText(productName);
+
+    // Barcha qatorlarni topish
+    const rows = page.locator('tr.ant-table-row');
+    const rowCount = await rows.count();
+
+    logger.info(`📊 Jami ${rowCount} ta qator mavjud`);
+
+    if (rowCount === 0) {
+      logger.warn('⚠️ Jadvalda qatorlar topilmadi');
+      return null;
+    }
+
+    let bestMatch: {
+      rowIndex: number;
+      rowElement: Locator;
+      similarity: number;
+    } | null = null;
+
+    // Har bir qatorni tekshirish
+    for (let idx = 0; idx < rowCount; idx++) {
+      try {
+        const row = rows.nth(idx);
+
+        // 2-chi td ichidagi mahsulot nomini olish
+        const nameCell = row.locator('td:nth-child(2)');
+        const cellText = await nameCell.textContent();
+
+        if (!cellText) continue;
+
+        const rowProductName = normalizeText(cellText);
+
+        logger.info(`   ${idx + 1}. Tekshirilmoqda: '${cellText.trim()}'`);
+
+        // Moslik darajasini hisoblash
+        const similarity = fuzzyMatch(targetName, rowProductName);
+
+        if (similarity > 0.7) {
+          // 70% dan yuqori moslik
+          if (!bestMatch || similarity > bestMatch.similarity) {
+            bestMatch = { rowIndex: idx, rowElement: row, similarity };
           }
+        }
 
-          // 2. Qisman moslik
-          let similarity = SequenceMatcher.ratio(
-            normalizedTarget,
-            normalizedRow,
-          );
-
-          // 3. Ichida mavjudligini tekshirish
-          if (
-            normalizedTarget.includes(normalizedRow) ||
-            normalizedRow.includes(normalizedTarget)
-          ) {
-            similarity = Math.max(similarity, 0.9);
-          }
-
-          // 4. So'zlar bo'yicha moslik
-          const targetWords = new Set(normalizedTarget.split(/\s+/));
-          const rowWords = new Set(normalizedRow.split(/\s+/));
-          const intersection = new Set(
-            [...targetWords].filter((x) => rowWords.has(x)),
-          );
-          const wordMatch = intersection.size / Math.max(targetWords.size, 1);
-          similarity = Math.max(similarity, wordMatch);
-
-          if (similarity > bestSimilarity) {
-            bestSimilarity = similarity;
-            bestMatch = row;
-            bestIdx = idx;
-          }
-
+        // To'liq mos kelsa, darhol qaytarish
+        if (similarity >= 0.95) {
           logger.info(
-            `   ${idx + 1}. ${rowProductName.trim()} - moslik: ${(
-              similarity * 100
-            ).toFixed(0)}%`,
+            `✅✅✅ TOPILDI! Qator #${idx + 1}: '${cellText.trim()}'`,
           );
-        } catch {
-          continue;
+          logger.info(`🎯 Moslik darajasi: ${(similarity * 100).toFixed(1)}%`);
+
+          // Qatorni ko'rinadigan qilish
+          await row.scrollIntoViewIfNeeded();
+          await page.waitForTimeout(300);
+
+          // Qatorni highlight qilish
+          await row.evaluate((el) => {
+            (el as HTMLElement).style.backgroundColor = '#fff3cd';
+            (el as HTMLElement).style.border = '3px solid #ff6b00';
+          });
+
+          return { rowIndex: idx, rowElement: row };
         }
+      } catch (error) {
+        continue;
       }
+    }
 
-      // Eng yaxshi moslikni tanlash (kamida 70% moslik)
-      if (bestMatch && bestSimilarity >= 0.7) {
-        logger.info('');
-        logger.info(
-          `✅✅✅ TOPILDI! (Moslik: ${(bestSimilarity * 100).toFixed(
-            0,
-          )}%) ✅✅✅`,
-        );
-        logger.info(`📍 Qator #${bestIdx! + 1}`);
-        logger.info('');
-
-        // Qatorni ko'rinadigan qilish
-        await bestMatch.scrollIntoViewIfNeeded();
-        await this.page.waitForTimeout(500);
-
-        // Qatorni highlight qilish
-        await bestMatch.evaluate((el: HTMLElement) => {
-          el.style.backgroundColor = '#fff3cd';
-          el.style.border = '3px solid #ff6b00';
-        });
-
-        logger.info(
-          `🎯 Qator #${bestIdx! + 1} belgilandi va highlight qilindi!`,
-        );
-
-        return bestIdx; // 0-indexed
-      }
-
-      // Topilmasa
-      logger.error(
-        `\n❌ '${productName}' mahsuloti topilmadi yoki moslik darajasi past!`,
+    // Eng yaxshi moslikni qaytarish
+    if (bestMatch) {
+      logger.info(`✅ Eng yaxshi moslik: Qator #${bestMatch.rowIndex + 1}`);
+      logger.info(
+        `🎯 Moslik darajasi: ${(bestMatch.similarity * 100).toFixed(1)}%`,
       );
-      return null;
-    } catch (error) {
-      logger.error('❌ Qator qidirishda xato:', error);
-      return null;
-    }
-  }
 
-  /**
-   * Aniq qator uchun miqdorni o'zgartirish
-   */
-  private async setAmountForRow(
-    rowIndex: number,
-    amountValue: string,
-  ): Promise<boolean> {
-    try {
-      logger.info(`🔢 Qator #${rowIndex} uchun miqdor: ${amountValue}`);
+      await bestMatch.rowElement.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(300);
 
-      // Aniq qator uchun input topish
-      const amountInputXpath = `//input[@name='restore.${rowIndex}.amount']`;
-      const amountInput = this.page
-        .locator(`xpath=${amountInputXpath}`)
-        .first();
-
-      await amountInput.waitFor({ state: 'visible', timeout: 10000 });
-
-      // JavaScript orqali tez o'zgartirish
-      await amountInput.evaluate((el: HTMLInputElement, value: string) => {
-        el.scrollIntoView({ block: 'center' });
-        el.focus();
-        el.select();
-        el.value = value;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.blur();
-      }, amountValue);
-
-      logger.info(`✅ Miqdor o'zgartirildi: ${amountValue}`);
-      return true;
-    } catch (error) {
-      logger.error(`❌ Miqdor o'zgartirishda xato:`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Aniq qator uchun MXIK kodini tanlash
-   */
-  private async selectMxikCodeForRow(
-    rowIndex: number,
-    mxikValue: string,
-  ): Promise<boolean> {
-    try {
-      logger.info(`🔄 Qator #${rowIndex} uchun MXIK tanlash boshlandi...`);
-
-      // Aniq qator uchun select topish
-      const selectXpath = `//div[contains(@class,'ant-select') and @name='restore.${rowIndex}.productCode']`;
-      const mxikSelect = this.page.locator(`xpath=${selectXpath}`).first();
-
-      await mxikSelect.waitFor({ state: 'visible', timeout: 12000 });
-
-      // Selectni ochish
-      await mxikSelect.scrollIntoViewIfNeeded();
-      await this.page.waitForTimeout(300);
-
-      await mxikSelect.evaluate((el) => (el as HTMLElement).click());
-      logger.info(`📂 Qator #${rowIndex} MXIK dropdown ochildi`);
-      await this.page.waitForTimeout(500);
-
-      // Input topish
-      const inputXpath = `${selectXpath}//input[contains(@class,'ant-select-selection-search-input')]`;
-      const inputBox = this.page.locator(`xpath=${inputXpath}`).first();
-
-      await inputBox.waitFor({ state: 'visible', timeout: 3000 });
-      await inputBox.focus();
-      await this.page.waitForTimeout(200);
-
-      // Qiymat yozish
-      await inputBox.evaluate((el: HTMLInputElement) => {
-        el.value = '';
+      await bestMatch.rowElement.evaluate((el) => {
+        (el as HTMLElement).style.backgroundColor = '#fff3cd';
+        (el as HTMLElement).style.border = '3px solid #ff6b00';
       });
-      await this.page.waitForTimeout(200);
 
-      const mxikStr = String(mxikValue).trim();
-      await inputBox.type(mxikStr);
-      logger.info(`⌨️ MXIK yozildi: ${mxikStr}`);
-
-      await this.page.waitForTimeout(800);
-
-      // Dropdown topish
-      const dropdown = await this.findVisibleDropdown();
-
-      if (!dropdown) {
-        logger.error('❌ Dropdown topilmadi');
-        return false;
-      }
-
-      logger.info('✅ Dropdown topildi');
-
-      // Variantlarni topish
-      const options = await dropdown
-        .locator('.//div[contains(@class,"ant-select-item-option-content")]')
-        .all();
-
-      logger.info(`📋 ${options.length} ta variant topildi`);
-
-      if (options.length === 0) {
-        logger.error('❌ MXIK variantlari topilmadi');
-        return false;
-      }
-
-      // To'g'ri variantni topish
-      let matched: any = null;
-      let matchedText = '';
-
-      for (const opt of options) {
-        try {
-          const optText = await opt.textContent();
-          if (!optText) continue;
-
-          const trimmed = optText.trim();
-
-          // To'liq moslik
-          if (trimmed === mxikStr || trimmed.startsWith(mxikStr + ' ')) {
-            matched = opt;
-            matchedText = trimmed;
-            logger.info(`✅ TO'LIQ MOS: ${trimmed}`);
-            break;
-          }
-
-          // Ichida mavjud
-          if (trimmed.includes(mxikStr)) {
-            if (!matched) {
-              matched = opt;
-              matchedText = trimmed;
-            }
-          }
-        } catch {
-          continue;
-        }
-      }
-
-      // Agar topilmasa - birinchi variant
-      if (!matched && options.length > 0) {
-        matched = options[0];
-        matchedText = (await matched.textContent()) || '';
-        logger.warn('⚠️ Mos kelish topilmadi, birinchi variant tanlanadi');
-      }
-
-      if (!matched) {
-        logger.error('❌ Hech qanday MXIK varianti tanlanmadi');
-        return false;
-      }
-
-      // Variantni tanlash
-      logger.info('🎯 Tanlanyapti...');
-
-      await matched.scrollIntoViewIfNeeded();
-      await this.page.waitForTimeout(300);
-
-      await matched.evaluate((el: HTMLElement) => el.click());
-      logger.info('✅ MXIK tanlandi!');
-
-      await this.page.waitForTimeout(500);
-
-      return true;
-    } catch (error) {
-      logger.error('❌ MXIK xatosi:', error);
-
-      // Screenshot
-      try {
-        await this.page.screenshot({
-          path: `screenshots/mxik_error_${Date.now()}.png`,
-        });
-      } catch {
-        // Ignore
-      }
-
-      return false;
-    }
-  }
-
-  /**
-   * Aniq qator uchun o'lchov birligini tanlash (Virtual scroll bilan!)
-   */
-  private async selectUnitNameForRow(
-    rowIndex: number,
-    unitValue: string,
-  ): Promise<boolean> {
-    try {
-      logger.info(`🔄 Qator #${rowIndex} uchun o'lchov birligi tanlash...`);
-
-      // Select topish
-      const selectXpath = `//div[contains(@class,'ant-select') and @name='restore.${rowIndex}.unitName']`;
-      const unitSelect = this.page.locator(`xpath=${selectXpath}`).first();
-
-      await unitSelect.waitFor({ state: 'visible', timeout: 12000 });
-      await unitSelect.scrollIntoViewIfNeeded();
-
-      // Selectni ochish
-      try {
-        await unitSelect.click();
-      } catch {
-        await unitSelect.evaluate((el) => (el as HTMLElement).click());
-      }
-
-      logger.info(`📂 Qator #${rowIndex} o'lchov dropdown ochildi`);
-      await this.page.waitForTimeout(500);
-
-      // Target normalizatsiya
-      const target = normalizeUnitName(unitValue);
-      logger.info(`🎯 Target: '${target}'`);
-
-      // Dropdown topish
-      const dropdown = await this.findVisibleDropdown();
-      if (!dropdown) {
-        logger.error('❌ Dropdown topilmadi');
-        return false;
-      }
-
-      // Scroll area topish
-      let scrollArea = null;
-      try {
-        scrollArea = await dropdown.locator('.rc-virtual-list-holder').first();
-        await scrollArea.waitFor({ state: 'attached', timeout: 2000 });
-      } catch {
-        try {
-          scrollArea = await dropdown.locator('.rc-virtual-list').first();
-        } catch {
-          scrollArea = dropdown;
-        }
-      }
-
-      // Virtual scroll bilan qidirish
-      const uniqueSet = new Set<string>();
-      let noChangeRounds = 0;
-      let bestMatch: { element: any; text: string; similarity: number } | null =
-        null;
-
-      while (true) {
-        // Hozirgi variantlarni tekshirish
-        const options = await dropdown
-          .locator('.//div[contains(@class,"ant-select-item-option-content")]')
-          .all();
-
-        for (const opt of options) {
-          try {
-            const webText = ((await opt.textContent()) || '').trim();
-            if (!webText || uniqueSet.has(webText)) continue;
-
-            uniqueSet.add(webText);
-
-            const normalizedWeb = normalizeUnitName(webText);
-
-            // To'liq moslik
-            if (normalizedWeb === target) {
-              logger.info(`✅ TOPILDI: '${webText}'`);
-
-              await opt.scrollIntoViewIfNeeded();
-              await this.page.waitForTimeout(180);
-
-              try {
-                await opt.click();
-              } catch {
-                await opt.evaluate((el: HTMLElement) => el.click());
-              }
-
-              return true;
-            }
-
-            // Fuzzy match
-            const similarity = SequenceMatcher.ratio(target, normalizedWeb);
-            if (!bestMatch || similarity > bestMatch.similarity) {
-              bestMatch = { element: opt, text: webText, similarity };
-            }
-          } catch {
-            continue;
-          }
-        }
-
-        // Scroll qilish
-        const beforeScroll = await scrollArea.evaluate(
-          (el: any) => el.scrollTop,
-        );
-
-        await scrollArea.evaluate((el: any) => {
-          el.scrollTop += 300;
-        });
-
-        await this.page.waitForTimeout(450);
-
-        const afterScroll = await scrollArea.evaluate(
-          (el: any) => el.scrollTop,
-        );
-
-        if (afterScroll === beforeScroll) {
-          noChangeRounds++;
-        } else {
-          noChangeRounds = 0;
-        }
-
-        // Chiqish shartlari
-        if (noChangeRounds >= 20 || uniqueSet.size > 5000) {
-          break;
-        }
-      }
-
-      // Fuzzy match (85% va undan yuqori)
-      if (bestMatch && bestMatch.similarity >= 0.85) {
-        logger.info(
-          `⚡ FUZZY MATCH: '${bestMatch.text}' (${(
-            bestMatch.similarity * 100
-          ).toFixed(0)}%)`,
-        );
-
-        await bestMatch.element.scrollIntoViewIfNeeded();
-        await this.page.waitForTimeout(180);
-
-        try {
-          await bestMatch.element.click();
-        } catch {
-          await bestMatch.element.evaluate((el: HTMLElement) => el.click());
-        }
-
-        return true;
-      }
-
-      logger.error(`❌ TOPILMADI: '${unitValue}'`);
-      return false;
-    } catch (error) {
-      logger.error("❌ O'lchov birligi xatosi:", error);
-      return false;
-    }
-  }
-
-  /**
-   * Ko'rinuvchi dropdownni topish
-   */
-  private async findVisibleDropdown(): Promise<any | null> {
-    const dropdownXpath =
-      "//div[contains(@class,'ant-select-dropdown') and not(contains(@class,'ant-select-dropdown-hidden'))]";
-
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const dropdowns = await this.page
-          .locator(`xpath=${dropdownXpath}`)
-          .all();
-
-        for (const dd of dropdowns) {
-          try {
-            const isVisible = await dd.isVisible();
-            if (isVisible) {
-              return dd;
-            }
-          } catch {
-            continue;
-          }
-        }
-
-        await this.page.waitForTimeout(300);
-      } catch {
-        await this.page.waitForTimeout(300);
-      }
+      return { rowIndex: bestMatch.rowIndex, rowElement: bestMatch.rowElement };
     }
 
+    logger.error(`❌ '${productName}' mahsuloti topilmadi!`);
+    return null;
+  } catch (error) {
+    logger.error('❌ Qator qidirishda xato:', error);
     return null;
   }
 }
 
 /**
- * Tez funksiya - chekni to'ldirish
+ * Input maydoniga qiymat kiritish (React uchun)
+ */
+async function setInputValue(
+  page: Page,
+  selector: string,
+  value: string | number,
+  fieldName: string,
+): Promise<boolean> {
+  try {
+    const input = page.locator(selector).first();
+    const count = await input.count();
+
+    if (count === 0) {
+      logger.warn(`⚠️ ${fieldName} input topilmadi: ${selector}`);
+      return false;
+    }
+
+    // Avvalgi qiymatni tozalash
+    await input.clear();
+    await page.waitForTimeout(200);
+
+    // Yangi qiymat kiritish (React uchun)
+    await input.evaluate((el: HTMLInputElement, newValue: string) => {
+      const nativeSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype,
+        'value',
+      )?.set;
+
+      if (nativeSetter) {
+        nativeSetter.call(el, newValue);
+      } else {
+        el.value = newValue;
+      }
+
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    }, String(value));
+
+    await page.waitForTimeout(300);
+
+    // Tekshirish
+    const currentValue = await input.inputValue();
+    if (currentValue === String(value)) {
+      logger.info(`✅ ${fieldName} = ${value}`);
+      return true;
+    }
+
+    // Qayta urinish - oddiy fill bilan
+    await input.fill(String(value));
+    await page.waitForTimeout(200);
+
+    logger.info(`✅ ${fieldName} = ${value} (retry)`);
+    return true;
+  } catch (error) {
+    logger.error(`❌ ${fieldName} kiritishda xato:`, error);
+    return false;
+  }
+}
+
+/**
+ * Summa va Miqdor maydonlarini to'ldirish
+ * KETMA-KETLIK: 1) Summa 2) Miqdor
+ */
+async function fillQuantityAndAmount(
+  page: Page,
+  rowIndex: number,
+  data: CheckData,
+): Promise<boolean> {
+  try {
+    logger.info("\n📝 Summa va Miqdor to'ldirilmoqda...");
+
+    // 1️⃣ SUMMA (chek_summa/summa/price/bir_birlik) - AVVAL
+    const summa =
+      data.chek_summa || data.summa || data.price || data.bir_birlik;
+    if (summa) {
+      const summaSelectors = [
+        `input[name="restore.${rowIndex}.price"]`,
+        `input[name="restore[${rowIndex}].price"]`,
+        `tr.ant-table-row:nth-child(${rowIndex + 1}) input[name*="price"]`,
+      ];
+
+      for (const selector of summaSelectors) {
+        const filled = await setInputValue(page, selector, summa, 'Summa');
+        if (filled) break;
+      }
+    }
+
+    // 2️⃣ MIQDOR (amount/miqdor) - KEYIN
+    const miqdor = data.miqdor || data.amount;
+    if (miqdor) {
+      // Qator uchun miqdor input
+      const miqdorSelectors = [
+        `input[name="restore.${rowIndex}.amount"]`,
+        `input[name="restore[${rowIndex}].amount"]`,
+        `tr.ant-table-row:nth-child(${rowIndex + 1}) input[name*="amount"]`,
+      ];
+
+      for (const selector of miqdorSelectors) {
+        const filled = await setInputValue(page, selector, miqdor, 'Miqdor');
+        if (filled) break;
+      }
+    }
+
+    return true;
+  } catch (error) {
+    logger.error("❌ Summa/Miqdor to'ldirishda xato:", error);
+    return false;
+  }
+}
+
+/**
+ * MXIK kodni tanlash (dropdown)
+ */
+async function selectMXIK(
+  page: Page,
+  rowIndex: number,
+  mxikCode: string,
+): Promise<boolean> {
+  try {
+    logger.info(`\n📦 MXIK kod tanlanmoqda: ${mxikCode}`);
+
+    // MXIK input/select ni topish
+    const mxikSelectors = [
+      `input[name="restore.${rowIndex}.productCode"]`,
+      `input[name="restore[${rowIndex}].productCode"]`,
+      `.ant-select-selection-search-input[id*="productCode"]`,
+      `tr.ant-table-row:nth-child(${rowIndex + 1}) .ant-select`,
+    ];
+
+    let mxikInput: Locator | null = null;
+
+    for (const selector of mxikSelectors) {
+      const element = page.locator(selector).first();
+      const count = await element.count();
+
+      if (count > 0) {
+        mxikInput = element;
+        logger.info(`✅ MXIK input topildi: ${selector}`);
+        break;
+      }
+    }
+
+    if (!mxikInput) {
+      // Alternativ - birinchi qator ichidagi select
+      mxikInput = page
+        .locator(
+          `tr.ant-table-row:nth-child(${
+            rowIndex + 1
+          }) td:nth-child(3) .ant-select`,
+        )
+        .first();
+      const count = await mxikInput.count();
+
+      if (count === 0) {
+        logger.error('❌ MXIK input topilmadi');
+        return false;
+      }
+    }
+
+    // Dropdown ochish uchun bosish
+    await mxikInput.click();
+    await page.waitForTimeout(500);
+
+    // MXIK kodni kiritish
+    await page.keyboard.type(mxikCode, { delay: 50 });
+    await page.waitForTimeout(1000);
+
+    // Dropdown'dan tanlash
+    const dropdownOption = page
+      .locator(`.ant-select-dropdown .ant-select-item:has-text("${mxikCode}")`)
+      .first();
+    const optionCount = await dropdownOption.count();
+
+    if (optionCount > 0) {
+      await dropdownOption.click();
+      logger.info(`✅ MXIK kod tanlandi: ${mxikCode}`);
+      await page.waitForTimeout(500);
+      return true;
+    }
+
+    // Alternativ - birinchi variantni tanlash
+    const firstOption = page
+      .locator('.ant-select-dropdown .ant-select-item')
+      .first();
+    const firstOptionCount = await firstOption.count();
+
+    if (firstOptionCount > 0) {
+      await firstOption.click();
+      logger.info(`✅ MXIK kod tanlandi (birinchi variant)`);
+      await page.waitForTimeout(500);
+      return true;
+    }
+
+    // Enter bosish
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(500);
+
+    logger.info(`✅ MXIK kod kiritildi: ${mxikCode}`);
+    return true;
+  } catch (error) {
+    logger.error('❌ MXIK tanlashda xato:', error);
+    return false;
+  }
+}
+
+/**
+ * O'lchov birlikni tanlash
+ */
+async function selectUnit(
+  page: Page,
+  rowIndex: number,
+  unitName: string,
+): Promise<boolean> {
+  try {
+    logger.info(`\n📏 O'lchov birligi tanlanmoqda: ${unitName}`);
+
+    const normalizedUnit = normalizeUnit(unitName);
+
+    // O'lchov birlik select ni topish
+    const unitSelectors = [
+      `select[name="restore.${rowIndex}.unitId"]`,
+      `select[name="restore[${rowIndex}].unitId"]`,
+      `tr.ant-table-row:nth-child(${rowIndex + 1}) select[name*="unit"]`,
+      `tr.ant-table-row:nth-child(${rowIndex + 1}) td:nth-child(4) select`,
+    ];
+
+    let unitSelect: Locator | null = null;
+
+    for (const selector of unitSelectors) {
+      const element = page.locator(selector).first();
+      const count = await element.count();
+
+      if (count > 0) {
+        unitSelect = element;
+        logger.info(`✅ O'lchov birligi select topildi: ${selector}`);
+        break;
+      }
+    }
+
+    if (!unitSelect) {
+      // Ant Design Select bo'lishi mumkin
+      unitSelect = page
+        .locator(`tr.ant-table-row:nth-child(${rowIndex + 1}) .ant-select`)
+        .last();
+      const count = await unitSelect.count();
+
+      if (count === 0) {
+        logger.warn("⚠️ O'lchov birligi select topilmadi");
+        return false;
+      }
+    }
+
+    // Native select bo'lsa
+    const tagName = await unitSelect.evaluate((el) => el.tagName.toLowerCase());
+
+    if (tagName === 'select') {
+      // Option larni olish
+      const options = unitSelect.locator('option');
+      const optionCount = await options.count();
+
+      for (let i = 0; i < optionCount; i++) {
+        const option = options.nth(i);
+        const optionText = await option.textContent();
+
+        if (
+          optionText &&
+          fuzzyMatch(normalizedUnit, normalizeText(optionText)) > 0.7
+        ) {
+          const optionValue = await option.getAttribute('value');
+          await unitSelect.selectOption({ value: optionValue || '' });
+          logger.info(`✅ O'lchov birligi tanlandi: ${optionText}`);
+          return true;
+        }
+      }
+
+      // Topilmasa birinchisini tanlash
+      await unitSelect.selectOption({ index: 1 });
+      logger.info("✅ O'lchov birligi tanlandi (default)");
+      return true;
+    }
+
+    // Ant Design Select
+    await unitSelect.click();
+    await page.waitForTimeout(500);
+
+    // Dropdown'dan qidirish
+    const dropdownOptions = page.locator(
+      '.ant-select-dropdown .ant-select-item',
+    );
+    const dropdownCount = await dropdownOptions.count();
+
+    for (let i = 0; i < dropdownCount; i++) {
+      const option = dropdownOptions.nth(i);
+      const optionText = await option.textContent();
+
+      if (
+        optionText &&
+        fuzzyMatch(normalizedUnit, normalizeText(optionText)) > 0.6
+      ) {
+        await option.click();
+        logger.info(`✅ O'lchov birligi tanlandi: ${optionText}`);
+        await page.waitForTimeout(300);
+        return true;
+      }
+    }
+
+    // Topilmasa birinchisini tanlash
+    if (dropdownCount > 0) {
+      await dropdownOptions.first().click();
+      logger.info("✅ O'lchov birligi tanlandi (first option)");
+      return true;
+    }
+
+    await page.keyboard.press('Escape');
+    return false;
+  } catch (error) {
+    logger.error("❌ O'lchov birligi tanlashda xato:", error);
+    return false;
+  }
+}
+
+/**
+ * Modalni chapdan o'ngga scroll qilish
+ */
+async function scrollModalHorizontally(page: Page): Promise<void> {
+  try {
+    logger.info("📜 Modal chapdan o'ngga scroll qilinmoqda...");
+
+    // Modal body ni topish
+    const modalBody = page.locator('.ant-modal-body').first();
+    const count = await modalBody.count();
+
+    if (count > 0) {
+      // Scroll qilish
+      await modalBody.evaluate((el) => {
+        el.scrollLeft = el.scrollWidth;
+      });
+
+      await page.waitForTimeout(500);
+      logger.info('✅ Modal scroll qilindi');
+    }
+
+    // Alternativ - table container
+    const tableContainer = page.locator('.ant-table-body').first();
+    const tableCount = await tableContainer.count();
+
+    if (tableCount > 0) {
+      await tableContainer.evaluate((el) => {
+        el.scrollLeft = el.scrollWidth;
+      });
+
+      await page.waitForTimeout(500);
+    }
+  } catch (error) {
+    logger.warn('⚠️ Modal scroll qilishda xato:', error);
+  }
+}
+
+/**
+ * ZIP fayl yuklash
+ */
+async function uploadZipFile(
+  page: Page,
+  zipFolderPath: string = 'C:\\lll_ha',
+): Promise<boolean> {
+  try {
+    logger.info('\n📦 ZIP fayl yuklanmoqda...');
+
+    // Upload input ni topish
+    const uploadInputSelectors = [
+      'input[type="file"]',
+      '.ant-upload input[type="file"]',
+      'input[accept=".zip"]',
+      'input[accept="application/zip"]',
+    ];
+
+    let uploadInput: Locator | null = null;
+
+    for (const selector of uploadInputSelectors) {
+      const element = page.locator(selector).first();
+      const count = await element.count();
+
+      if (count > 0) {
+        uploadInput = element;
+        logger.info(`✅ Upload input topildi: ${selector}`);
+        break;
+      }
+    }
+
+    if (!uploadInput) {
+      logger.warn('⚠️ Upload input topilmadi');
+      return false;
+    }
+
+    // ZIP faylni topish (birinchi topilgan)
+    // Node.js da fs moduli kerak, bu yerda path ni to'g'ridan-to'g'ri ishlatamiz
+    const zipPath = `${zipFolderPath}\\file.zip`;
+
+    // Fayl yuklash
+    await uploadInput.setInputFiles(zipPath);
+
+    await page.waitForTimeout(2000);
+
+    // Yuklash muvaffaqiyatligini tekshirish
+    const successMessage = page.locator(
+      '.ant-message-success, .ant-upload-list-item-done',
+    );
+    const successCount = await successMessage.count();
+
+    if (successCount > 0) {
+      logger.info('✅ ZIP fayl muvaffaqiyatli yuklandi');
+      return true;
+    }
+
+    logger.info('✅ ZIP fayl yuklandi (tekshiruvsiz)');
+    return true;
+  } catch (error) {
+    logger.error('❌ ZIP yuklashda xato:', error);
+    return false;
+  }
+}
+
+/**
+ * CAPTCHA yechish (2Captcha API orqali)
+ */
+async function solveCaptcha(page: Page, apiKey: string): Promise<boolean> {
+  try {
+    logger.info('\n🤖 CAPTCHA yechish boshlandi...');
+
+    // CAPTCHA rasmini topish
+    const captchaImageSelectors = [
+      'img[src*="captcha"]',
+      '.captcha-image img',
+      'img[alt*="captcha" i]',
+      '.ant-modal img[src*="base64"]',
+    ];
+
+    let captchaImage: Locator | null = null;
+
+    for (const selector of captchaImageSelectors) {
+      const element = page.locator(selector).first();
+      const count = await element.count();
+
+      if (count > 0) {
+        captchaImage = element;
+        logger.info(`✅ CAPTCHA rasmi topildi: ${selector}`);
+        break;
+      }
+    }
+
+    if (!captchaImage) {
+      logger.warn('⚠️ CAPTCHA rasmi topilmadi');
+      return false;
+    }
+
+    // Rasmni base64 formatda olish
+    const imageSrc = await captchaImage.getAttribute('src');
+
+    if (!imageSrc) {
+      logger.error('❌ CAPTCHA rasm manzili topilmadi');
+      return false;
+    }
+
+    let base64Image: string;
+
+    if (imageSrc.startsWith('data:image')) {
+      // Allaqachon base64
+      base64Image = imageSrc.split(',')[1];
+    } else {
+      // URL dan yuklab olish kerak
+      const imageBuffer = await page.evaluate(async (src: string) => {
+        const response = await fetch(src);
+        const blob = await response.blob();
+        return new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(blob);
+        });
+      }, imageSrc);
+
+      base64Image = imageBuffer.split(',')[1];
+    }
+
+    // 2Captcha API ga yuborish
+    logger.info('📤 CAPTCHA 2Captcha API ga yuborilmoqda...');
+
+    // API request (fetch orqali)
+    const createTaskResponse = await page.evaluate(
+      async ({
+        apiKey,
+        base64Image,
+      }: {
+        apiKey: string;
+        base64Image: string;
+      }) => {
+        const response = await fetch('https://2captcha.com/in.php', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            key: apiKey,
+            method: 'base64',
+            body: base64Image,
+            json: '1',
+          }),
+        });
+
+        return response.json();
+      },
+      { apiKey, base64Image },
+    );
+
+    if (createTaskResponse.status !== 1) {
+      logger.error(`❌ 2Captcha xato: ${createTaskResponse.request}`);
+      return false;
+    }
+
+    const taskId = createTaskResponse.request;
+    logger.info(`📋 Task ID: ${taskId}`);
+
+    // Natijani kutish (polling)
+    let captchaText = '';
+    const maxAttempts = 30; // 30 * 2 = 60 sekund
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      await page.waitForTimeout(2000);
+
+      const resultResponse = await page.evaluate(
+        async ({ apiKey, taskId }: { apiKey: string; taskId: string }) => {
+          const response = await fetch(
+            `https://2captcha.com/res.php?key=${apiKey}&action=get&id=${taskId}&json=1`,
+          );
+          return response.json();
+        },
+        { apiKey, taskId },
+      );
+
+      if (resultResponse.status === 1) {
+        captchaText = resultResponse.request;
+        break;
+      }
+
+      if (resultResponse.request !== 'CAPCHA_NOT_READY') {
+        logger.error(`❌ 2Captcha xato: ${resultResponse.request}`);
+        return false;
+      }
+
+      logger.info(`⏳ CAPTCHA yechilmoqda... (${attempt + 1}/${maxAttempts})`);
+    }
+
+    if (!captchaText) {
+      logger.error('❌ CAPTCHA yechilmadi (timeout)');
+      return false;
+    }
+
+    logger.info(`✅ CAPTCHA yechildi: ${captchaText}`);
+
+    // CAPTCHA inputiga kiritish
+    const captchaInputSelectors = [
+      'input[name="captcha"]',
+      'input[placeholder*="captcha" i]',
+      'input[placeholder*="код" i]',
+      '.captcha-input input',
+    ];
+
+    for (const selector of captchaInputSelectors) {
+      const input = page.locator(selector).first();
+      const count = await input.count();
+
+      if (count > 0) {
+        await input.fill(captchaText);
+        logger.info('✅ CAPTCHA kiritildi');
+        await page.waitForTimeout(500);
+        return true;
+      }
+    }
+
+    logger.error('❌ CAPTCHA input topilmadi');
+    return false;
+  } catch (error) {
+    logger.error('❌ CAPTCHA yechishda xato:', error);
+    return false;
+  }
+}
+
+/**
+ * Saqlash tugmasini bosish
+ */
+async function clickSaveButton(
+  page: Page,
+  maxRetries: number = 3,
+): Promise<boolean> {
+  try {
+    logger.info('\n💾 Saqlash tugmasi bosilmoqda...');
+
+    const saveButtonXpaths = [
+      "//button[contains(.,'Сақлаш')]",
+      "//button[contains(.,'Saqlash')]",
+      "//button[contains(.,'Сохранить')]",
+      "//button[contains(.,'Save')]",
+      "//button[@type='submit']",
+      '.ant-modal-footer button.ant-btn-primary',
+    ];
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      logger.info(`🔄 Urinish ${attempt}/${maxRetries}...`);
+
+      for (const xpath of saveButtonXpaths) {
+        try {
+          let button: Locator;
+
+          if (xpath.startsWith('//')) {
+            button = page.locator(`xpath=${xpath}`).first();
+          } else {
+            button = page.locator(xpath).first();
+          }
+
+          const count = await button.count();
+
+          if (count > 0) {
+            const isVisible = await button.isVisible({ timeout: 2000 });
+
+            if (isVisible) {
+              // JavaScript orqali bosish
+              await button.evaluate((el) => (el as HTMLElement).click());
+
+              logger.info('✅ Saqlash tugmasi bosildi');
+
+              // Yuklanish indikatorini kutish
+              await page.waitForTimeout(2000);
+
+              // Muvaffaqiyat xabarini tekshirish
+              const successMessage = page.locator(
+                '.ant-message-success, .ant-notification-success',
+              );
+              const successCount = await successMessage.count();
+
+              if (successCount > 0) {
+                logger.info("✅✅✅ Ma'lumotlar muvaffaqiyatli saqlandi!");
+                return true;
+              }
+
+              // Modal yopilganligini tekshirish
+              await page.waitForTimeout(1000);
+              const modalCount = await page.locator('.ant-modal-root').count();
+
+              if (modalCount === 0) {
+                logger.info('✅ Modal yopildi - saqlash muvaffaqiyatli');
+                return true;
+              }
+
+              return true;
+            }
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      await page.waitForTimeout(1000);
+    }
+
+    logger.error('❌ Saqlash tugmasi topilmadi yoki bosilmadi');
+    return false;
+  } catch (error) {
+    logger.error('❌ Saqlash tugmasini bosishda xato:', error);
+    return false;
+  }
+}
+
+/**
+ * Modal X tugmasini bosib yopish
+ */
+async function closeModalByX(page: Page): Promise<boolean> {
+  try {
+    logger.info('❌ Modal X tugmasi orqali yopilmoqda...');
+
+    const closeButtonSelectors = [
+      '.ant-modal-close',
+      'button.ant-modal-close',
+      '.ant-modal-close-x',
+      'button[aria-label="Close"]',
+    ];
+
+    for (const selector of closeButtonSelectors) {
+      const button = page.locator(selector).first();
+      const count = await button.count();
+
+      if (count > 0) {
+        await button.click();
+        await page.waitForTimeout(1000);
+        logger.info('✅ Modal yopildi');
+        return true;
+      }
+    }
+
+    // Escape tugmasini bosish
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(500);
+
+    return true;
+  } catch (error) {
+    logger.error('❌ Modal yopishda xato:', error);
+    return false;
+  }
+}
+
+/**
+ * ASOSIY FUNKSIYA - Tahrirlash oynasidagi ma'lumotlarni to'ldirish
+ *
+ * Jarayon:
+ * 1. Mahsulot nomiga mos qatorni topish
+ * 2. Miqdor va Summa ni kiritish
+ * 3. Modalni o'ngga scroll qilish
+ * 4. MXIK kodni tanlash
+ * 5. O'lchov birligini tanlash
+ * 6. ZIP faylni yuklash
+ * 7. CAPTCHA yechish
+ * 8. Saqlash tugmasini bosish
  */
 export async function fillEditCheckFields(
   page: Page,
   data: CheckData,
   captchaApiKey: string,
+  zipFolderPath: string = 'C:\\lll_ha',
 ): Promise<boolean> {
-  const action = new FieldFillerAction(page);
-  return action.execute(data, captchaApiKey);
+  try {
+    logger.info('\n' + '='.repeat(60));
+    logger.info("📝 TAHRIRLASH OYNASI TO'LDIRILMOQDA");
+    logger.info('='.repeat(60));
+
+    const chekRaqam = data.chek_raqam ? String(data.chek_raqam).trim() : '';
+    const productName = data.maxsulot_nomi || data.product_name || '';
+    const mxikCode = data.mxik || data.mxik_code || '';
+    const unitName = data.ulchov || data.unit || '';
+
+    logger.info(`📋 Chek: ${chekRaqam}`);
+    logger.info(`📦 Mahsulot: ${productName}`);
+    logger.info(`🔢 MXIK: ${mxikCode}`);
+    logger.info(`📏 O'lchov: ${unitName}`);
+
+    // Modal ochilganligini tekshirish
+    await page.waitForTimeout(1000);
+
+    // 1️⃣ MAHSULOT QATORINI TOPISH
+    let rowIndex = 0;
+
+    if (productName) {
+      logger.info('\n1️⃣ Mahsulot qatori qidirilmoqda...');
+      const rowResult = await findProductRow(page, productName);
+
+      if (rowResult) {
+        rowIndex = rowResult.rowIndex;
+        logger.info(`✅ Qator topildi: #${rowIndex + 1}`);
+      } else {
+        logger.warn('⚠️ Mahsulot topilmadi, birinchi qator ishlatiladi');
+        rowIndex = 0;
+      }
+    }
+
+    // 2️⃣ MIQDOR VA SUMMA TO'LDIRISH
+    logger.info("\n2️⃣ Miqdor va Summa to'ldirilmoqda...");
+    await fillQuantityAndAmount(page, rowIndex, data);
+
+    // 3️⃣ MODALNI O'NGGA SCROLL QILISH
+    logger.info('\n3️⃣ Modal scroll qilinmoqda...');
+    await scrollModalHorizontally(page);
+
+    // 4️⃣ MXIK KOD TANLASH
+    if (mxikCode) {
+      logger.info('\n4️⃣ MXIK kod tanlanmoqda...');
+      await selectMXIK(page, rowIndex, mxikCode);
+    }
+
+    // 5️⃣ O'LCHOV BIRLIGI TANLASH
+    if (unitName) {
+      logger.info("\n5️⃣ O'lchov birligi tanlanmoqda...");
+      await selectUnit(page, rowIndex, unitName);
+    }
+
+    // 6️⃣ ZIP FAYL YUKLASH
+    logger.info('\n6️⃣ ZIP fayl yuklanmoqda...');
+    await uploadZipFile(page, zipFolderPath);
+
+    // 7️⃣ CAPTCHA YECHISH
+    logger.info('\n7️⃣ CAPTCHA yechilmoqda...');
+    const captchaSolved = await solveCaptcha(page, captchaApiKey);
+
+    if (!captchaSolved) {
+      logger.error('❌ CAPTCHA yechilmadi - saqlash mumkin emas');
+      await closeModalByX(page);
+      return false;
+    }
+
+    // 8️⃣ SAQLASH TUGMASINI BOSISH
+    logger.info('\n8️⃣ Saqlash tugmasi bosilmoqda...');
+    const saved = await clickSaveButton(page);
+
+    if (saved) {
+      logger.info('\n' + '='.repeat(60));
+      logger.info('✅✅✅ CHEK MUVAFFAQIYATLI SAQLANDI! ✅✅✅');
+      logger.info('='.repeat(60) + '\n');
+      return true;
+    } else {
+      logger.error('\n❌❌❌ SAQLASHDA MUAMMO! ❌❌❌\n');
+      await closeModalByX(page);
+      return false;
+    }
+  } catch (error) {
+    logger.error('❌ KRITIK XATO:', error);
+    await closeModalByX(page);
+    return false;
+  }
 }

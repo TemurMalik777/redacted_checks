@@ -1,10 +1,43 @@
 import { logger } from '../utils/logUtils';
+import ChecksService from '../../modules/checks/checks.service';
 
 /**
  * Check Status Updater
  * Select_checks jadvalidagi cheklar statusini boshqarish
  */
 export class CheckStatusUpdater {
+  /**
+   * Automation workflow uchun: chek statusini yangilash
+   * @param checkNumber - Chek raqami
+   * @param found - Tizimda topilgani
+   * @param details - Qo'shimcha ma'lumotlar (hozircha ishlatilmaydi)
+   */
+  async updateCheckStatus(
+    checkNumber: string,
+    found: boolean,
+    details?: any
+  ): Promise<void> {
+    try {
+      const check = await ChecksService.findByChekRaqam(checkNumber);
+
+      if (!check) {
+        logger.warn(`⚠️ Chek #${checkNumber} database'da topilmadi`);
+        return;
+      }
+
+      // Agar topilgan bo'lsa, processed = true qilamiz
+      if (found) {
+        await ChecksService.updateCheck(check.id, { processed: true });
+        logger.info(`✅ Chek #${checkNumber} processed=true qilindi`);
+      } else {
+        logger.info(`ℹ️ Chek #${checkNumber} tizimda topilmadi (processed o'zgarishsiz)`);
+      }
+    } catch (error) {
+      logger.error(`❌ Chek #${checkNumber} statusini yangilashda xato:`, error);
+      throw error;
+    }
+  }
+
   /**
    * Bitta chekni muvaffaqiyatli qayta ishlandi deb belgilash
    */
